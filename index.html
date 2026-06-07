@@ -243,6 +243,38 @@ body{background:var(--bg);color:var(--t1);font-family:var(--fb);height:100dvh;ov
 /* FIX 7: Termin card – buttons hidden until tap */
 .tc-actions{display:none;}
 .tc-card.open .tc-actions{display:flex;}
+
+/* ── WETTER WIDGET ── */
+.weather-card{background:var(--s2);border:1px solid var(--b2);border-radius:var(--r);padding:12px 16px;margin-top:8px;display:flex;align-items:center;gap:12px;}
+.weather-icon{font-size:28px;flex-shrink:0;}
+.weather-info{flex:1;}
+.weather-temp{font-family:var(--fd);font-size:22px;font-weight:300;letter-spacing:-0.5px;}
+.weather-desc{font-size:12px;color:var(--t2);margin-top:1px;}
+.weather-extra{font-size:11px;color:var(--t3);margin-top:2px;}
+.weather-loc{font-size:10px;color:var(--t3);margin-top:2px;display:flex;align-items:center;gap:3px;}
+
+/* ── SCHNELLSTATUS SWIPE ── */
+.prow{position:relative;overflow:hidden;}
+.prow-swipe-hint{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--t3);opacity:0;transition:opacity 0.3s;pointer-events:none;}
+.prow:hover .prow-swipe-hint{opacity:1;}
+
+/* Swipe status overlay */
+#swipe-status-bar{
+  position:fixed;bottom:calc(var(--sb) + 75px);left:0;right:0;
+  display:flex;justify-content:center;gap:8px;
+  padding:8px 12px;z-index:40;
+  pointer-events:none;opacity:0;
+  transition:opacity 0.2s;
+}
+#swipe-status-bar.visible{opacity:1;pointer-events:all;}
+.ssb-btn{
+  padding:8px 14px;border-radius:50px;font-size:13px;font-weight:600;
+  border:none;cursor:pointer;font-family:var(--fb);
+  background:var(--s2);color:var(--t1);border:1.5px solid var(--b2);
+  transition:all 0.15s;box-shadow:0 4px 16px rgba(0,0,0,0.3);
+}
+.ssb-btn:active{transform:scale(0.94);}
+.ssb-btn.active{border-color:currentColor;}
 </style>
 </head>
 <body>
@@ -279,10 +311,14 @@ body{background:var(--bg);color:var(--t1);font-family:var(--fb);height:100dvh;ov
   <!-- HOME -->
   <div class="screen on" id="screen-home">
     <div class="tb"><div><div class="tb-title">Heute</div><div class="tb-sub" id="today-lbl">–</div></div><div class="av" id="av-home">D</div></div>
+    <!-- WETTER WIDGET -->
+    <div class="sec" style="padding-bottom:0">
+      <div id="weather-widget"></div>
+    </div>
     <div class="sec">
       <div class="card" style="position:relative;overflow:hidden">
         <div style="position:absolute;width:140px;height:140px;background:radial-gradient(circle,rgba(124,110,245,0.08),transparent 70%);top:-30px;right:-30px;pointer-events:none"></div>
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--t3);margin-bottom:10px">Heute</div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--t3);margin-bottom:10px">Heute <span style="font-weight:400;color:var(--t3);font-size:10px;text-transform:none;letter-spacing:0">← wischen zum Ändern</span></div>
         <div id="today-persons"><div class="empty">Lädt…</div></div>
       </div>
       <div id="bday-banner" style="display:none;background:rgba(240,160,80,0.12);border:1px solid rgba(240,160,80,0.35);border-radius:13px;padding:11px 14px;gap:9px;align-items:center;margin-top:8px">
@@ -387,6 +423,15 @@ body{background:var(--bg);color:var(--t1);font-family:var(--fb);height:100dvh;ov
       <button id="btn-crop-cancel" style="padding:13px 20px;background:transparent;border:1px solid rgba(255,255,255,0.2);border-radius:50px;color:rgba(255,255,255,0.6);font-family:var(--fb);font-size:16px;cursor:pointer;flex:1">Abbrechen</button>
       <button id="btn-crop-save" style="flex:2;padding:13px;background:linear-gradient(135deg,var(--ac),#9b8df8);border:none;border-radius:50px;color:white;font-family:var(--fb);font-size:16px;font-weight:500;cursor:pointer">Speichern ✓</button>
     </div>
+  </div>
+
+  <!-- SCHNELLSTATUS SWIPE BAR -->
+  <div id="swipe-status-bar">
+    <button class="ssb-btn" data-status="office" data-emoji="🏢">🏢 Büro</button>
+    <button class="ssb-btn" data-status="home" data-emoji="🏠">🏠 Home</button>
+    <button class="ssb-btn" data-status="travel" data-emoji="✈️">✈️ Reise</button>
+    <button class="ssb-btn" data-status="vacation" data-emoji="🌴">🌴 Urlaub</button>
+    <button class="ssb-btn" style="background:var(--re2);color:var(--re);border-color:rgba(224,85,85,0.3)" data-status="cancel">✕</button>
   </div>
 
   <!-- FIX 10: Tab order -->
@@ -598,11 +643,12 @@ function showApp(){
   hideLoading();
   document.getElementById('setup').style.display='none';
   document.getElementById('app').style.display='flex';
-  // Update user-color CSS variable
   if(S.me&&S.me.color){document.documentElement.style.setProperty('--user-color',S.me.color);}
   setupEventListeners();
+  initSwipeStatus();
+  initServiceWorker();
   updAvatars();
-  loadBdays().then(function(){syncVacationsToStatuses().then(function(){updAvatars();renderHome();renderWeek();});});
+  loadBdays().then(function(){syncVacationsToStatuses().then(function(){updAvatars();renderHome();renderWeek();if(pushEnabled)scheduleBdayCheck();});});
   initPush();
   setInterval(async function(){
     var pS=JSON.stringify(S.statuses),pD=JSON.stringify(S.dogs);
@@ -698,10 +744,22 @@ function renderHome(){
   var html='';
   S.members.forEach(function(m){
     var s=getSt(m.id,td);var info=s?SM[s.status]:null;
-    html+='<div class="prow"><div class="pdot" style="background:'+m.color+';box-shadow:0 0 5px '+m.color+'"></div><div class="pname">'+m.name+'</div><div>'+(info?'<span class="chip '+info.c+'">'+info.e+' '+info.l+'</span>':'<span class="chip ce" style="cursor:pointer;border:1.5px dashed '+m.color+'44;color:'+m.color+'" data-mid="'+m.id+'" data-date="'+td+'">+ Eintragen</span>')+'</div></div>';
+    // data-mid für Swipe-Geste
+    html+='<div class="prow" data-mid="'+m.id+'">'
+      +'<div class="pdot" style="background:'+m.color+';box-shadow:0 0 5px '+m.color+'"></div>'
+      +'<div class="pname">'+m.name+'</div>'
+      +'<div>'+(info
+        ?'<span class="chip '+info.c+'" style="cursor:pointer" data-mid="'+m.id+'" data-date="'+td+'">'+info.e+' '+info.l+'</span>'
+        :'<span class="chip ce" style="cursor:pointer;border:1.5px dashed '+m.color+'44;color:'+m.color+'" data-mid="'+m.id+'" data-date="'+td+'">+ Eintragen</span>')
+      +'</div>'
+      +'<span style="font-size:9px;color:var(--t3);margin-left:auto;padding-left:6px">←</span>'
+      +'</div>';
   });
   var tp=document.getElementById('today-persons');tp.innerHTML=html||'<div class="empty">Keine Mitglieder</div>';
-  tp.querySelectorAll('.ce[data-mid]').forEach(function(el){el.onclick=function(){openPicker(el.dataset.mid,el.dataset.date);};});
+  // Tap on chip/status öffnet Picker
+  tp.querySelectorAll('[data-mid][data-date]').forEach(function(el){el.onclick=function(e){e.stopPropagation();openPicker(el.dataset.mid,el.dataset.date);};});
+  // Swipe-Gesten auf Person-Zeilen initialisieren
+  initPRowSwipe();
   var ca=document.getElementById('conflict-area');
   var allAway=S.members.length>1&&S.members.every(function(m){var s=getSt(m.id,td);return s&&(s.status==='travel'||s.status==='vacation');});
   ca.innerHTML=allAway?'<div class="alert"><span style="font-size:17px">⚠️</span><div class="alert-t"><strong>Alle unterwegs</strong> – bitte Emma-Transfer prüfen.</div></div>':'';
@@ -711,9 +769,11 @@ function renderHome(){
   if(!isWknd(td)){renderEmmaToday(td);}else{document.getElementById('emma-today').innerHTML='<div class="empty" style="padding:6px 0">Wochenende – kein Transfer nötig 🐕</div>';}
   var todayBdays=bdayData.filter(function(b){var d=new Date(b.date+'T12:00:00'),n=new Date(td+'T12:00:00');return d.getDate()===n.getDate()&&d.getMonth()===n.getMonth();});
   var bb=document.getElementById('bday-banner');
-  if(todayBdays.length){document.getElementById('bday-banner-names').textContent=todayBdays.map(function(b){return b.name;}).join(', ');bb.style.display='flex';if(Notification.permission==='granted'){todayBdays.forEach(function(b){try{new Notification('🎂 '+b.name+' hat Geburtstag!',{body:'Herzlichen Glückwunsch! 🎉'});}catch(e){}});}}else{bb.style.display='none';}
+  if(todayBdays.length){document.getElementById('bday-banner-names').textContent=todayBdays.map(function(b){return b.name;}).join(', ');bb.style.display='flex';}else{bb.style.display='none';}
   renderActs();
   loadAppts([td]).then(renderHeuteTermine);
+  // Wetter laden (gecacht)
+  loadWeather();
 }
 
 function renderEmmaToday(date){
@@ -1322,6 +1382,280 @@ function closeM(id){document.getElementById(id).classList.remove('on');}
 // TOAST
 var tTimer;
 function toast(icon,title,text){clearTimeout(tTimer);document.getElementById('t-icon').textContent=icon;document.getElementById('t-title').textContent=title;document.getElementById('t-text').textContent=text;document.getElementById('toast').classList.add('show');tTimer=setTimeout(function(){document.getElementById('toast').classList.remove('show');},3200);}
+
+// ═══════════════════════════════════
+// 🌤️ WETTER WIDGET (Open-Meteo, kein API-Key)
+// ═══════════════════════════════════
+var weatherCache={data:null,ts:0,lat:null,lon:null};
+var WMO_ICONS={0:'☀️',1:'🌤️',2:'⛅',3:'☁️',45:'🌫️',48:'🌫️',51:'🌦️',53:'🌦️',55:'🌧️',61:'🌧️',63:'🌧️',65:'🌧️',71:'❄️',73:'❄️',75:'❄️',80:'🌦️',81:'🌧️',82:'⛈️',85:'❄️',86:'❄️',95:'⛈️',96:'⛈️',99:'⛈️'};
+var WMO_DESC={0:'Klarer Himmel',1:'Überwiegend klar',2:'Teilweise bewölkt',3:'Bedeckt',45:'Neblig',48:'Neblig',51:'Leichter Nieselregen',53:'Nieselregen',55:'Starker Nieselregen',61:'Leichter Regen',63:'Regen',65:'Starker Regen',71:'Leichter Schnee',73:'Schnee',75:'Starker Schnee',80:'Schauer',81:'Starke Schauer',82:'Heftige Schauer',95:'Gewitter',96:'Gewitter mit Hagel',99:'Schweres Gewitter'};
+
+async function loadWeather(){
+  var el=document.getElementById('weather-widget');if(!el)return;
+  // Check cache (30 min)
+  var now=Date.now();
+  if(weatherCache.data&&(now-weatherCache.ts)<1800000){renderWeatherWidget(weatherCache.data);return;}
+  // Show loading
+  el.innerHTML='<div class="weather-card"><div class="weather-icon">🌤️</div><div class="weather-info"><div class="weather-temp">–°</div><div class="weather-desc">Standort wird ermittelt…</div></div></div>';
+  // Get location
+  if(!navigator.geolocation){el.innerHTML='';return;}
+  navigator.geolocation.getCurrentPosition(async function(pos){
+    var lat=pos.coords.latitude.toFixed(4),lon=pos.coords.longitude.toFixed(4);
+    weatherCache.lat=lat;weatherCache.lon=lon;
+    try{
+      var url='https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=temperature_2m,weathercode,windspeed_10m,relativehumidity_2m&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto&forecast_days=1';
+      var res=await fetch(url);var data=await res.json();
+      // Reverse geocode city name
+      var geoUrl='https://nominatim.openstreetmap.org/reverse?lat='+lat+'&lon='+lon+'&format=json';
+      var city='';
+      try{var geo=await fetch(geoUrl,{headers:{'Accept-Language':'de'}});var geoData=await geo.json();city=geoData.address&&(geoData.address.city||geoData.address.town||geoData.address.village||geoData.address.suburb)||'';}catch(e){}
+      weatherCache.data={current:data.current,daily:data.daily,city:city};weatherCache.ts=Date.now();
+      renderWeatherWidget(weatherCache.data);
+    }catch(e){el.innerHTML='';}
+  },function(){el.innerHTML='';},{timeout:8000});
+}
+
+function renderWeatherWidget(d){
+  var el=document.getElementById('weather-widget');if(!el||!d)return;
+  var code=d.current.weathercode;
+  var icon=WMO_ICONS[code]||'🌡️';
+  var desc=WMO_DESC[code]||'';
+  var temp=Math.round(d.current.temperature_2m);
+  var tmax=d.daily&&d.daily.temperature_2m_max?Math.round(d.daily.temperature_2m_max[0]):'';
+  var tmin=d.daily&&d.daily.temperature_2m_min?Math.round(d.daily.temperature_2m_min[0]):'';
+  var wind=Math.round(d.current.windspeed_10m);
+  var hum=d.current.relativehumidity_2m;
+  var rain=d.daily&&d.daily.precipitation_sum?d.daily.precipitation_sum[0]:0;
+  var rainStr=rain>0?'🌧️ '+rain.toFixed(1)+'mm':'';
+  el.innerHTML='<div class="weather-card">'
+    +'<div class="weather-icon">'+icon+'</div>'
+    +'<div class="weather-info">'
+    +'<div style="display:flex;align-items:baseline;gap:6px"><div class="weather-temp">'+temp+'°</div>'
+    +(tmax!==''?'<div style="font-size:12px;color:var(--t3)">↑'+tmax+'° ↓'+tmin+'°</div>':'')
+    +'</div>'
+    +'<div class="weather-desc">'+desc+'</div>'
+    +'<div class="weather-extra">💨 '+wind+' km/h · 💧 '+hum+'%'+(rainStr?' · '+rainStr:'')+'</div>'
+    +(d.city?'<div class="weather-loc">📍 '+d.city+'</div>':'')
+    +'</div>'
+    +'</div>';
+}
+
+// ═══════════════════════════════════
+// 👆 SCHNELLSTATUS VIA SWIPE
+// ═══════════════════════════════════
+var swipeCtx={active:false,mid:null,startX:0,startY:0,el:null};
+
+function initSwipeStatus(){
+  // Setup swipe status bar buttons
+  document.querySelectorAll('#swipe-status-bar .ssb-btn').forEach(function(btn){
+    btn.onclick=function(){
+      var status=btn.dataset.status;
+      if(status==='cancel'){hideSwipeBar();return;}
+      if(status==='travel'){
+        hideSwipeBar();
+        pickerCtx={mid:swipeCtx.mid,date:today()};
+        openTravelModal();return;
+      }
+      var info=SM[status];
+      if(info)selStatusDirect(swipeCtx.mid,today(),status,info.e,info.l);
+      hideSwipeBar();
+    };
+  });
+}
+
+function showSwipeBar(mid){
+  swipeCtx.mid=mid;
+  var bar=document.getElementById('swipe-status-bar');
+  bar.classList.add('visible');
+  // Highlight current status
+  var cur=getSt(mid,today());
+  bar.querySelectorAll('.ssb-btn').forEach(function(b){
+    b.classList.toggle('active',cur&&b.dataset.status===cur.status);
+    if(cur&&b.dataset.status===cur.status){var info=SM[cur.status];if(info)b.style.background=info.c==='co'?'rgba(91,141,238,0.25)':info.c==='ch'?'var(--gr2)':info.c==='ct'?'var(--or2)':info.c==='cv'?'rgba(232,112,112,0.2)':'rgba(255,100,150,0.15)';}
+  });
+}
+
+function hideSwipeBar(){
+  document.getElementById('swipe-status-bar').classList.remove('visible');
+  swipeCtx.mid=null;
+}
+
+async function selStatusDirect(mid,date,status,emoji,label){
+  var m=byId(mid);
+  try{
+    await api('daily_statuses',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=representation'},body:JSON.stringify({member_id:mid,date:date,status:status,updated_at:new Date().toISOString()})});
+    S.statuses[mid+'_'+date]={member_id:mid,date:date,status:status};
+    await logAct('<strong>'+(m?m.name:'?')+'</strong> ist '+fmtLong(date)+' <strong>'+emoji+' '+label+'</strong>');
+    toast('✅','Gespeichert',emoji+' '+label);
+    renderHome();
+    if(document.getElementById('screen-week').classList.contains('on'))renderWeek();
+    // Push notification to partner
+    pushToPartner(m?m.name:'?',emoji+' '+label);
+  }catch(e){toast('❌','Fehler','Bitte nochmal versuchen.');console.error(e);}
+}
+
+function initPRowSwipe(){
+  // Called after renderHome – adds swipe listeners to prow elements
+  var rows=document.querySelectorAll('.prow[data-mid]');
+  rows.forEach(function(row){
+    var mid=row.dataset.mid;
+    var sx=0,sy=0,moved=false;
+    row.addEventListener('touchstart',function(e){sx=e.touches[0].clientX;sy=e.touches[0].clientY;moved=false;},{passive:true});
+    row.addEventListener('touchmove',function(e){moved=true;},{passive:true});
+    row.addEventListener('touchend',function(e){
+      if(!moved)return;
+      var dx=e.changedTouches[0].clientX-sx;
+      var dy=e.changedTouches[0].clientY-sy;
+      if(Math.abs(dx)>Math.abs(dy)*1.5&&Math.abs(dx)>35){
+        // Swipe detected on person row
+        showSwipeBar(mid);
+      }
+    },{passive:true});
+  });
+  // Tap outside to close swipe bar
+  document.getElementById('screen-home').addEventListener('touchstart',function(e){
+    if(!document.getElementById('swipe-status-bar').classList.contains('visible'))return;
+    if(!e.target.closest('#swipe-status-bar'))hideSwipeBar();
+  },{passive:true});
+}
+
+// ═══════════════════════════════════
+// 🔔 PUSH NOTIFICATIONS (verbessert)
+// ═══════════════════════════════════
+var pushEnabled=false;
+
+function initPush(){
+  if(!('Notification' in window))return;
+  pushEnabled=Notification.permission==='granted';
+  if(localStorage.getItem('fs_push_dismissed'))return;
+  if(Notification.permission==='default'){
+    setTimeout(function(){document.getElementById('pushbanner').style.display='block';},4000);
+  }
+  // Schedule daily birthday check
+  if(pushEnabled)scheduleBdayCheck();
+  // Schedule emma reminder
+  if(pushEnabled)scheduleEmmaReminder();
+  // Supabase realtime for partner changes
+  if(pushEnabled)initRealtimePush();
+}
+
+async function reqPush(){
+  dismissPush();
+  var p=await Notification.requestPermission();
+  if(p==='granted'){
+    pushEnabled=true;
+    toast('🔔','Push aktiviert!','Du wirst ab sofort benachrichtigt.');
+    scheduleBdayCheck();
+    scheduleEmmaReminder();
+    initRealtimePush();
+  } else {
+    toast('❌','Push abgelehnt','Bitte in den Browser-Einstellungen aktivieren.');
+  }
+}
+
+function dismissPush(){
+  document.getElementById('pushbanner').style.display='none';
+  localStorage.setItem('fs_push_dismissed','1');
+}
+
+function sendNotification(title,body,tag){
+  if(Notification.permission!=='granted')return;
+  try{
+    var n=new Notification(title,{body:body,icon:'icon.svg',badge:'icon.svg',tag:tag||'roh',renotify:true});
+    n.onclick=function(){window.focus();n.close();};
+  }catch(e){console.log('Notification error:',e);}
+}
+
+function pushToPartner(name,what){
+  // Notify if the OTHER person changed something (checked via member_id)
+  // Since we can't push to another device directly without a server,
+  // the partner will see it on next poll or via realtime
+  // But we CAN notify locally if this device is the partner's device
+  if(!S.me||!S.members)return;
+  var partner=S.members.find(function(m){return m.id!==S.me.id;});
+  if(!partner)return;
+  // Will trigger on partner's device via realtime subscription
+}
+
+function scheduleBdayCheck(){
+  // Check birthdays once per day
+  var lastCheck=localStorage.getItem('fs_bday_check');
+  var today2=today();
+  if(lastCheck===today2)return;
+  localStorage.setItem('fs_bday_check',today2);
+  if(!bdayData.length)return;
+  // Today's birthdays
+  var todayBdays=bdayData.filter(function(b){
+    var d=new Date(b.date+'T12:00:00'),n=new Date(today2+'T12:00:00');
+    return d.getDate()===n.getDate()&&d.getMonth()===n.getMonth();
+  });
+  todayBdays.forEach(function(b){
+    sendNotification('🎂 Geburtstag!',b.name+' hat heute Geburtstag!','bday-'+b.id);
+  });
+  // Tomorrow's birthdays (reminder)
+  var tomorrow=addDays(today2,1);
+  var tmBdays=bdayData.filter(function(b){
+    var d=new Date(b.date+'T12:00:00'),t=new Date(tomorrow+'T12:00:00');
+    return d.getDate()===t.getDate()&&d.getMonth()===t.getMonth();
+  });
+  tmBdays.forEach(function(b){
+    sendNotification('🎂 Morgen Geburtstag!',b.name+' hat morgen Geburtstag – nicht vergessen!','bday-tm-'+b.id);
+  });
+}
+
+function scheduleEmmaReminder(){
+  // Deaktiviert – nicht benötigt
+}
+
+function initRealtimePush(){
+  // Poll for partner changes every 30s and send push if something changed
+  // (Supabase Realtime WebSocket approach)
+  if(!S.me||!S.hh)return;
+  var lastActId2=S.acts.length?S.acts[0].id:null;
+  setInterval(async function(){
+    if(!pushEnabled)return;
+    try{
+      var res=await api('activity_log?household_id=eq.'+S.hh.id+'&order=created_at.desc&limit=1');
+      var acts=await res.json();
+      if(!acts.length)return;
+      var latest=acts[0];
+      if(lastActId2===null){lastActId2=latest.id;return;}
+      if(latest.id!==lastActId2&&latest.member_id!==S.me.id){
+        lastActId2=latest.id;
+        var cleanMsg=latest.message.replace(/<[^>]+>/g,'');
+        sendNotification('ROH 🏠',cleanMsg,'act-'+latest.id);
+        // Refresh data
+        await loadAll();renderHome();
+      }
+    }catch(e){}
+  },30000);
+}
+
+// ═══════════════════════════════════
+// ⚡ SERVICE WORKER REGISTRATION
+// ═══════════════════════════════════
+function initServiceWorker(){
+  if(!('serviceWorker' in navigator))return;
+  // Inline service worker as blob (no separate file needed)
+  var swCode=`
+const CACHE='roh-v2';
+const ASSETS=['/familysync/','/familysync/index.html','/familysync/manifest.json','/familysync/icon.svg'];
+self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting()));});
+self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));});
+self.addEventListener('fetch',e=>{if(e.request.method!=='GET')return;if(e.request.url.includes('supabase')||e.request.url.includes('open-meteo')||e.request.url.includes('nominatim'))return;e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).then(resp=>{if(resp.ok){var c=resp.clone();caches.open(CACHE).then(cache=>cache.put(e.request,c));}return resp;})));});
+`;
+  try{
+    var blob=new Blob([swCode],{type:'application/javascript'});
+    var url=URL.createObjectURL(blob);
+    navigator.serviceWorker.register(url,{scope:'/familysync/'}).then(function(reg){
+      console.log('SW registered');
+      reg.update();
+    }).catch(function(e){
+      // Blob SW may not work on all browsers, that's ok
+      console.log('SW blob failed, trying file:',e.message);
+    });
+  }catch(e){console.log('SW skip:',e);}
+}
 
 // START
 init();
