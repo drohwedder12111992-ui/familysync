@@ -3,12 +3,41 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+<!-- PWA Core -->
 <meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ROH">
-<meta name="theme-color" content="#000000">
+<meta name="application-name" content="ROH">
+<meta name="theme-color" content="#7c6ef5">
+<meta name="msapplication-TileColor" content="#7c6ef5">
+<meta name="description" content="Euer gemeinsamer Familien-Assistent">
+
+<!-- Manifest -->
 <link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="icon.svg">
+
+<!-- Apple Touch Icons (iOS liest diese, nicht das Manifest) -->
+<link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
+<link rel="apple-touch-icon" sizes="152x152" href="icon-152.png">
+<link rel="apple-touch-icon" sizes="120x120" href="icon-120.png">
+<link rel="apple-touch-icon" sizes="76x76" href="icon-76.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+
+<!-- iOS Splash Screens -->
+<!-- iPhone 14 Pro Max (430x932) -->
+<link rel="apple-touch-startup-image" media="screen and (device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3)" href="splash-1290x2796.png">
+<!-- iPhone 14 Pro (393x852) -->
+<link rel="apple-touch-startup-image" media="screen and (device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3)" href="splash-1179x2556.png">
+<!-- iPhone 14 / 13 / 12 (390x844) -->
+<link rel="apple-touch-startup-image" media="screen and (device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)" href="splash-1170x2532.png">
+<!-- iPhone SE (375x667) -->
+<link rel="apple-touch-startup-image" media="screen and (device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2)" href="splash-750x1334.png">
+
+<!-- Favicon -->
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="shortcut icon" href="icon-192.png">
+
 <title>ROH</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;1,9..144,300&family=DM+Sans:wght@300;400;500;600&display=swap');
@@ -542,6 +571,7 @@ function api(p,o){o=o||{};return fetch(SB+'/rest/v1/'+p,{headers:Object.assign({
 // STATE
 var S={me:null,hh:null,members:[],statuses:{},dogs:{},acts:[],vacs:[],wkOff:0};
 var bdayData=[];
+var _isSaving=false; // Race condition guard
 // FIX 9: 8 gut differenzierbare Farben
 var COLORS=['#5b8dee','#ff69b4','#ff1493','#4ecb71','#f0a050','#a594f9','#e05555','#00c8a0'];
 var col1=COLORS[0],col2=COLORS[1];
@@ -654,6 +684,7 @@ function showApp(){
   loadBdays().then(function(){syncVacationsToStatuses().then(function(){updAvatars();renderHome();renderWeek();if(pushEnabled)scheduleBdayCheck();});});
   initPush();
   setInterval(async function(){
+    if(_isSaving)return; // Skip poll während einer Speicher-Operation
     var pS=JSON.stringify(S.statuses),pD=JSON.stringify(S.dogs);
     await loadAll();
     if(JSON.stringify(S.statuses)!==pS||JSON.stringify(S.dogs)!==pD){renderHome();var cur=document.querySelector('.screen.on');if(cur&&cur.id==='screen-week')renderWeek();}
@@ -766,7 +797,7 @@ function renderHome(){
   var ca=document.getElementById('conflict-area');
   var allAway=S.members.length>1&&S.members.every(function(m){var s=getSt(m.id,td);return s&&(s.status==='travel'||s.status==='vacation');});
   ca.innerHTML=allAway?'<div class="alert"><span style="font-size:17px">⚠️</span><div class="alert-t"><strong>Alle unterwegs</strong> – bitte Emma-Transfer prüfen.</div></div>':'';
-  var emPh=localStorage.getItem('fs_photo_emma');
+  var emPh=getEmmaPhoto();
   var emAv=document.getElementById('emma-home-av');
   if(emAv){if(emPh){emAv.innerHTML='<img src="'+emPh+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%">';}else{emAv.innerHTML='🐕';}}
   if(!isWknd(td)){renderEmmaToday(td);}else{document.getElementById('emma-today').innerHTML='<div class="empty" style="padding:6px 0">Wochenende – kein Transfer nötig 🐕</div>';}
@@ -972,7 +1003,20 @@ function renderEmmaScreen(){
 
 // STATUS PICKER
 function openPicker(mid,date){pickerCtx={mid:mid,date:date};var m=byId(mid);document.getElementById('m-status-title').textContent=(m?m.name:'–')+' — '+fmtLong(date);document.getElementById('m-status').classList.add('on');}
-async function selStatus(status,emoji,label){closeM('m-status');var mid=pickerCtx.mid,date=pickerCtx.date,m=byId(mid);try{await api('daily_statuses',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=representation'},body:JSON.stringify({member_id:mid,date:date,status:status,updated_at:new Date().toISOString()})});S.statuses[mid+'_'+date]={member_id:mid,date:date,status:status};await logAct('<strong>'+(m?m.name:'?')+'</strong> ist '+fmtLong(date)+' <strong>'+emoji+' '+label+'</strong>');toast('✅','Gespeichert',emoji+' '+label+' für '+fmtShort(date));renderHome();if(document.getElementById('screen-week').classList.contains('on'))renderWeek();}catch(e){toast('❌','Fehler','Bitte nochmal versuchen.');console.error(e);}}
+async function selStatus(status,emoji,label){
+  closeM('m-status');
+  var mid=pickerCtx.mid,date=pickerCtx.date,m=byId(mid);
+  _isSaving=true;
+  try{
+    await api('daily_statuses',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=representation'},body:JSON.stringify({member_id:mid,date:date,status:status,updated_at:new Date().toISOString()})});
+    S.statuses[mid+'_'+date]={member_id:mid,date:date,status:status};
+    await logAct('<strong>'+(m?m.name:'?')+'</strong> ist '+fmtLong(date)+' <strong>'+emoji+' '+label+'</strong>');
+    toast('✅','Gespeichert',emoji+' '+label+' für '+fmtShort(date));
+    renderHome();
+    if(document.getElementById('screen-week').classList.contains('on'))renderWeek();
+  }catch(e){toast('❌','Fehler','Bitte nochmal versuchen.');console.error(e);}
+  finally{setTimeout(function(){_isSaving=false;},3000);}
+}
 async function deleteStatus(){closeM('m-status');var mid=pickerCtx.mid,date=pickerCtx.date;try{await api('daily_statuses?member_id=eq.'+mid+'&date=eq.'+date,{method:'DELETE',headers:{'Prefer':'return=representation'}});delete S.statuses[mid+'_'+date];toast('✕','Gelöscht','Eintrag für '+fmtShort(date)+' entfernt.');renderHome();if(document.getElementById('screen-week').classList.contains('on'))renderWeek();}catch(e){toast('❌','Fehler','Bitte nochmal versuchen.');console.error(e);}}
 
 // TRAVEL
@@ -1281,10 +1325,15 @@ async function syncVacationsToStatuses(){
   for(var i=0;i<confirmed.length;i++){var v=confirmed[i];var mids=v.member_ids&&v.member_ids.length?v.member_ids:(v.confirmed_by_ids&&v.confirmed_by_ids.length?v.confirmed_by_ids:[]);if(!mids.length)continue;var cur=new Date(v.start_date+'T12:00:00'),end=new Date(v.end_date+'T12:00:00');while(cur<=end){var date=cur.toISOString().split('T')[0];for(var j=0;j<mids.length;j++){var mid=mids[j];var existing=S.statuses[mid+'_'+date];if(!existing||existing.status!=='vacation'){try{await api('daily_statuses',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=representation','Content-Type':'application/json'},body:JSON.stringify({member_id:mid,date:date,status:'vacation',note:v.name||null,updated_at:new Date().toISOString()})});S.statuses[mid+'_'+date]={member_id:mid,date:date,status:'vacation',note:v.name||null};}catch(e){try{await api('daily_statuses?member_id=eq.'+mid+'&date=eq.'+date,{method:'PATCH',body:JSON.stringify({status:'vacation',note:v.name||null,updated_at:new Date().toISOString()})});S.statuses[mid+'_'+date]={member_id:mid,date:date,status:'vacation',note:v.name||null};}catch(e2){}}}}cur.setDate(cur.getDate()+1);}}
 }
 
-// BUG 4 FIX: Emma-Foto in Supabase speichern und laden (geräteübergreifend)
-function loadEmmaPhoto(){
-  // Erst aus localStorage (schnell), dann Supabase-Wert bevorzugen
+function getEmmaPhoto(){
   var ph=S.hh&&S.hh.emma_photo?S.hh.emma_photo:localStorage.getItem('fs_photo_emma');
+  // Validierung: muss ein data URL oder http URL sein, kein leerer/korrupter Wert
+  if(!ph||ph.length<100)return null;
+  if(!ph.startsWith('data:image')&&!ph.startsWith('http'))return null;
+  return ph;
+}
+function loadEmmaPhoto(){
+  var ph=getEmmaPhoto();
   if(ph&&S.hh&&S.hh.emma_photo){localStorage.setItem('fs_photo_emma',ph);}
   var av=document.getElementById('emma-av');
   if(!av)return;
@@ -1485,6 +1534,7 @@ function hideSwipeBar(){
 
 async function selStatusDirect(mid,date,status,emoji,label){
   var m=byId(mid);
+  _isSaving=true;
   try{
     await api('daily_statuses',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=representation'},body:JSON.stringify({member_id:mid,date:date,status:status,updated_at:new Date().toISOString()})});
     S.statuses[mid+'_'+date]={member_id:mid,date:date,status:status};
@@ -1492,9 +1542,9 @@ async function selStatusDirect(mid,date,status,emoji,label){
     toast('✅','Gespeichert',emoji+' '+label);
     renderHome();
     if(document.getElementById('screen-week').classList.contains('on'))renderWeek();
-    // Push notification to partner
     pushToPartner(m?m.name:'?',emoji+' '+label);
   }catch(e){toast('❌','Fehler','Bitte nochmal versuchen.');console.error(e);}
+  finally{setTimeout(function(){_isSaving=false;},3000);}
 }
 
 function initPRowSwipe(){
