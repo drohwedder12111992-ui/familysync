@@ -208,10 +208,10 @@ body{background:var(--bg);color:var(--t1);font-family:var(--fb);height:100dvh;ov
 .ni.on .ni-label{color:var(--ac2);}
 
 /* ── MODALS ── */
-.overlay{position:fixed;inset:0;background:rgba(0,0,0,0.65);backdrop-filter:blur(10px);display:none;align-items:flex-end;justify-content:center;z-index:200;padding:13px;padding-bottom:calc(var(--sb) + 13px);}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);backdrop-filter:blur(10px);display:none;align-items:flex-end;justify-content:center;z-index:200;padding:0;}
 .overlay.on{display:flex;}
 /* FIX 11: User-color accent border on modal */
-.modal{width:100%;max-width:500px;background:var(--s1);border:1px solid var(--b2);border-top:3px solid var(--user-color);border-radius:22px;padding:18px;animation:sup 0.3s cubic-bezier(0.34,1.4,0.64,1);}
+.modal{width:100%;max-width:100%;background:var(--s1);border:1px solid var(--b2);border-top:3px solid var(--user-color);border-bottom:none;border-radius:22px 22px 0 0;padding:18px 18px calc(var(--sb) + 20px);animation:sup 0.3s cubic-bezier(0.34,1.4,0.64,1);max-height:88dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;}
 @keyframes sup{from{transform:translateY(110%);opacity:0;}to{transform:translateY(0);opacity:1;}}
 .mhandle{width:32px;height:4px;background:var(--b2);border-radius:2px;margin:0 auto 14px;}
 .mtitle{font-family:var(--fd);font-size:18px;font-weight:300;margin-bottom:3px;}
