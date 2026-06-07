@@ -483,7 +483,6 @@ body{background:var(--bg);color:var(--t1);font-family:var(--fb);height:100dvh;ov
     <button class="obtn" data-status="travel" data-emoji="✈️" data-label="Dienstreise"><span class="oem">✈️</span>Dienstreise</button>
     <button class="obtn" data-status="vacation" data-emoji="🌴" data-label="Urlaub"><span class="oem">🌴</span>Urlaub</button>
     <button class="obtn" data-status="appt" data-emoji="📌" data-label="Termin"><span class="oem">📌</span>Termin</button>
-    <button class="obtn" data-status="other" data-emoji="❓" data-label="Sonstiges"><span class="oem">❓</span>Sonstiges</button>
   </div>
   <button class="mcancel" style="background:var(--re2);border-color:rgba(224,85,85,0.2);color:var(--re);margin-bottom:8px" id="btn-del-status">✕ Eintrag löschen</button>
   <button class="mcancel" id="btn-cancel-status">Abbrechen</button></div>
@@ -577,7 +576,7 @@ var COLORS=['#5b8dee','#ff69b4','#ff1493','#4ecb71','#f0a050','#a594f9','#e05555
 var col1=COLORS[0],col2=COLORS[1];
 var chatHist=[],lastActId=null;
 var pickerCtx={},emmaCtx={};
-var SM={office:{e:'🏢',l:'Büro',c:'co'},home:{e:'🏠',l:'Homeoffice',c:'ch'},travel:{e:'✈️',l:'Dienstreise',c:'ct'},vacation:{e:'🌴',l:'Urlaub',c:'cv'},appt:{e:'📌',l:'Termin',c:'ca'},other:{e:'❓',l:'Sonstiges',c:'cf'}};
+var SM={office:{e:'🏢',l:'Büro',c:'co'},home:{e:'🏠',l:'Homeoffice',c:'ch'},travel:{e:'✈️',l:'Dienstreise',c:'ct'},vacation:{e:'🌴',l:'Urlaub',c:'cv'},appt:{e:'📌',l:'Termin',c:'ca'}};
 var WC={office:'wkco',home:'wkch',travel:'wkct',vacation:'wkcv',appt:'wkca',other:'wkcf'};
 
 // FIX 8: THEME SYSTEM
@@ -860,7 +859,7 @@ function _renderWeekGrid(dates){
   var td=today();
   var days=['Mo','Di','Mi','Do','Fr','Sa','So'];
 
-  // Header: KW + Datumsbereich
+  // Header
   var first=new Date(dates[0]+'T12:00:00'),last=new Date(dates[6]+'T12:00:00');
   document.getElementById('wk-range').textContent=
     'KW '+getKW(first)+' · '+first.toLocaleDateString('de-DE',{day:'numeric',month:'short'})+' – '+last.toLocaleDateString('de-DE',{day:'numeric',month:'short',year:'numeric'});
@@ -875,23 +874,21 @@ function _renderWeekGrid(dates){
     });
   });
 
-  // Single week grid – wider columns
-  var cols='38px repeat(7,1fr)';
+  // Sa/So deutlich schmaler – Fokus auf Arbeitswoche
+  var cols='32px 1fr 1fr 1fr 1fr 1fr 0.45fr 0.45fr';
   var grid=document.getElementById('wk-grid');grid.innerHTML='';
 
   // ── HEADER ROW ──
   var hrow=document.createElement('div');
-  hrow.style.cssText='display:grid;gap:3px;margin-bottom:4px;grid-template-columns:'+cols+';padding:0 2px';
+  hrow.style.cssText='display:grid;gap:2px;margin-bottom:5px;grid-template-columns:'+cols+';padding:0 2px';
   hrow.appendChild(document.createElement('div'));
   dates.forEach(function(date,i){
     var d=new Date(date+'T12:00:00');
     var isT=date===td;var isW=isWknd(date);
     var c=document.createElement('div');
-    c.style.cssText='text-align:center;border-radius:6px;padding:3px 2px;'
-      +(isT?'background:var(--ac);':'')
-      +(isW&&!isT?'opacity:0.45;':'');
-    c.innerHTML='<div style="font-size:9px;font-weight:700;text-transform:uppercase;color:'+(isT?'white':'var(--t3)')+'">'+days[i]+'</div>'
-      +'<div style="font-size:'+(isT?'13':'11')+'px;font-weight:'+(isT?'800':'500')+';color:'+(isT?'white':isW?'var(--t3)':'var(--t2)')+'">'+d.getDate()+'</div>';
+    c.style.cssText='text-align:center;border-radius:6px;padding:3px 1px;'+(isT?'background:var(--ac);':'');
+    c.innerHTML='<div style="font-size:'+(isW?'8':'9')+'px;font-weight:700;text-transform:uppercase;color:'+(isT?'white':isW?'var(--t3)':'var(--t3)')+(isW&&!isT?';opacity:0.5':'')+'">'+days[i]+'</div>'
+      +'<div style="font-size:'+(isT?'14':isW?'9':'11')+'px;font-weight:'+(isT?'900':'600')+';color:'+(isT?'white':isW?'var(--t3)':'var(--t1)')+(isW&&!isT?';opacity:0.5':'')+'">'+d.getDate()+'</div>';
     hrow.appendChild(c);
   });
   grid.appendChild(hrow);
@@ -899,13 +896,15 @@ function _renderWeekGrid(dates){
   // ── MEMBER ROWS ──
   S.members.forEach(function(m){
     var row=document.createElement('div');
-    row.style.cssText='display:grid;gap:3px;margin-bottom:3px;grid-template-columns:'+cols+';padding:0 2px';
+    row.style.cssText='display:grid;gap:2px;margin-bottom:4px;grid-template-columns:'+cols+';padding:0 2px';
+
+    // Avatar label
     var ph=getPhoto(m.id);
     var lbl=document.createElement('div');
-    lbl.style.cssText='display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px';
+    lbl.style.cssText='display:flex;align-items:center;justify-content:center;';
     lbl.innerHTML=ph
-      ?'<div style="width:24px;height:24px;border-radius:50%;background-image:url('+ph+');background-size:cover;background-position:center;border:2px solid '+m.color+'"></div>'
-      :'<div style="width:24px;height:24px;border-radius:50%;background:'+m.color+'22;color:'+m.color+';border:2px solid '+m.color+';display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">'+m.name[0]+'</div>';
+      ?'<div style="width:26px;height:26px;border-radius:50%;background-image:url('+ph+');background-size:cover;background-position:center;border:2px solid '+m.color+'"></div>'
+      :'<div style="width:26px;height:26px;border-radius:50%;background:'+m.color+'22;color:'+m.color+';border:2px solid '+m.color+';display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700">'+m.name[0]+'</div>';
     row.appendChild(lbl);
 
     dates.forEach(function(date,i){
@@ -916,48 +915,45 @@ function _renderWeekGrid(dates){
       var hasAppt=appts.length>0;
 
       var cell=document.createElement('div');
-      cell.style.cssText='border-radius:8px;cursor:pointer;border:1px solid;padding:3px 2px;min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;position:relative;transition:all 0.1s;overflow:hidden;'
-        +(isT?'border-color:var(--ac)!important;box-shadow:0 0 0 2px var(--ac);':'')
-        +(isPast?'opacity:0.4;':'')
-        +(isW?'opacity:'+(isPast?'0.25':'0.5')+';':'')
-        +(s?'background:'+m.color+'12;border-color:'+m.color+'66;':'background:var(--s2);border-color:var(--b1);');
+      var cellH=isW?'min-height:52px':'min-height:70px';
+      cell.style.cssText='border-radius:8px;cursor:pointer;border:1px solid;padding:4px 2px;'+cellH+';display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:2px;transition:all 0.1s;overflow:hidden;'
+        +(isT?'border-color:var(--ac);box-shadow:0 0 0 2px var(--ac);':'')
+        +(isPast&&!isT?'opacity:0.38;':'')
+        +(isW?'opacity:'+(isPast?'0.22':'0.42')+';background:var(--s1);border-color:var(--b1);'
+          :(s?'background:'+m.color+'13;border-color:'+m.color+'60;':'background:var(--s2);border-color:var(--b1);'));
 
-      // Icons oben: Status + Termin falls beides vorhanden
-      var icons='';
-      if(info) icons+=info.e;
-      if(hasAppt&&info) icons+='📌';
-      else if(hasAppt&&!info) icons+='📌';
-
-      // Termin-Details
-      var apptContent='';
-      if(appts.length===1){
-        var t0=appts[0];
-        var tStr=t0.time_from&&t0.time_from!=='00:00'?t0.time_from.slice(0,5):'';
-        if(tStr) apptContent+='<div style="font-size:7px;font-weight:700;color:'+m.color+';background:'+m.color+'20;border-radius:3px;padding:1px 3px;margin-top:1px;line-height:1.4">'+tStr+'</div>';
-        apptContent+='<div style="font-size:6px;color:var(--t2);line-height:1.3;text-align:center;padding:0 1px;max-width:100%;word-break:break-word;white-space:normal;margin-top:1px">'+t0.description+'</div>';
-      } else if(appts.length>1){
-        apptContent+=appts.slice(0,2).map(function(ap){
-          var ts=ap.time_from&&ap.time_from!=='00:00'?ap.time_from.slice(0,5):'·';
-          return '<div style="font-size:6px;font-weight:700;color:'+m.color+';background:'+m.color+'20;border-radius:3px;padding:1px 3px;margin-top:1px;line-height:1.4;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+ts+'</div>';
-        }).join('');
-        if(appts.length>2) apptContent+='<div style="font-size:6px;color:var(--t3)">+'+( appts.length-2)+'</div>';
+      // Status-Icon oben
+      var iconHtml='';
+      if(info||hasAppt){
+        var icns=(info?info.e:'')+(hasAppt?'📌':'');
+        iconHtml='<div style="font-size:12px;line-height:1.1;margin-top:1px">'+icns+'</div>';
+      } else if(!isW){
+        iconHtml='<div style="font-size:16px;color:var(--b2);margin-top:4px">+</div>';
       }
 
-      var vacNote=s&&s.status==='vacation'&&s.note
-        ?'<div style="font-size:6px;color:'+m.color+';font-weight:600;text-align:center;padding:0 1px;word-break:break-word;white-space:normal;line-height:1.3;margin-top:1px">'+s.note+'</div>':'' ;
+      // Urlaubs-Name
+      var vacHtml=s&&s.status==='vacation'&&s.note&&!isW
+        ?'<div style="font-size:6px;color:'+m.color+';font-weight:600;text-align:center;padding:0 2px;word-break:break-word;line-height:1.3">'+s.note+'</div>':'';
 
-      // Empty cell
-      var emptyIcon=(!s&&!hasAppt&&!isW)?'<span style="font-size:14px;color:var(--b2)">+</span>':'';
+      // Termin-Details (nur Mo-Fr)
+      var apptHtml='';
+      if(!isW&&appts.length===1){
+        var t0=appts[0];
+        var tStr=t0.time_from&&t0.time_from!=='00:00'?t0.time_from.slice(0,5):'';
+        if(tStr)apptHtml+='<div style="font-size:7px;font-weight:700;color:'+m.color+';background:'+m.color+'22;border-radius:3px;padding:1px 4px;line-height:1.4">'+tStr+'</div>';
+        apptHtml+='<div style="font-size:6px;color:var(--t2);line-height:1.3;text-align:center;padding:0 2px;max-width:100%;word-break:break-word;white-space:normal">'+t0.description+'</div>';
+      } else if(!isW&&appts.length>1){
+        appts.slice(0,2).forEach(function(ap){
+          var ts=ap.time_from&&ap.time_from!=='00:00'?ap.time_from.slice(0,5):'·';
+          apptHtml+='<div style="font-size:6px;font-weight:700;color:'+m.color+';background:'+m.color+'22;border-radius:3px;padding:1px 3px;line-height:1.4;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+ts+'</div>';
+        });
+        if(appts.length>2)apptHtml+='<div style="font-size:6px;color:var(--t3)">+'+( appts.length-2)+'</div>';
+      }
 
-      cell.innerHTML=
-        (icons?'<div style="font-size:11px;line-height:1.2;text-align:center;padding-top:2px">'+icons+'</div>':'')
-        +emptyIcon
-        +vacNote
-        +apptContent;
+      cell.innerHTML=iconHtml+vacHtml+apptHtml;
 
       cell.addEventListener('click',(function(mid,dt,st){return function(){
-        if(st&&st.status==='appt'&&!(apptData[(mid+'_'+dt)]||[]).length) openPicker(mid,dt);
-        else if((apptData[(mid+'_'+dt)]||[]).length) openApptModal(mid,dt);
+        if((apptData[(mid+'_'+dt)]||[]).length) openApptModal(mid,dt);
         else openPicker(mid,dt);
       };})(m.id,date,s));
       row.appendChild(cell);
@@ -965,86 +961,82 @@ function _renderWeekGrid(dates){
     grid.appendChild(row);
   });
 
-  // ── EMMA ROW ──
+  // ── EMMA ROW – kompakt, eine Zeile ──
   var emmaPh=getEmmaPhoto();
   var erow=document.createElement('div');
-  erow.style.cssText='display:grid;gap:3px;margin-bottom:3px;grid-template-columns:'+cols+';padding:0 2px';
+  erow.style.cssText='display:grid;gap:2px;margin-bottom:4px;grid-template-columns:'+cols+';padding:0 2px';
 
-  // Emma label mit Foto
   var elbl=document.createElement('div');
-  elbl.style.cssText='display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px';
+  elbl.style.cssText='display:flex;align-items:center;justify-content:center;';
   elbl.innerHTML=emmaPh
-    ?'<div style="width:24px;height:24px;border-radius:50%;background-image:url('+emmaPh+');background-size:cover;background-position:center;border:2px solid #f0a050"></div>'
-    :'<span style="font-size:16px">🐕</span>';
+    ?'<div style="width:26px;height:26px;border-radius:50%;background-image:url('+emmaPh+');background-size:cover;background-position:center;border:2px solid #f0a050"></div>'
+    :'<span style="font-size:18px">🐕</span>';
   erow.appendChild(elbl);
 
   dates.forEach(function(date){
     var isT=date===td;var isW=isWknd(date);
     if(isW){
       var empty=document.createElement('div');
-      empty.style.cssText='border-radius:8px;background:var(--s1);border:1px solid var(--b1);opacity:0.2;min-height:58px';
+      empty.style.cssText='border-radius:8px;background:var(--s1);border:1px solid var(--b1);opacity:0.15;min-height:52px';
       erow.appendChild(empty);return;
     }
     var dog=S.dogs[date];
     var dm=dog&&dog.morning_member_id?byId(dog.morning_member_id):null;
     var de=dog&&dog.evening_member_id?byId(dog.evening_member_id):null;
 
+    // Kompakte Zelle: morgens oben, abends unten – voller Tap pro Hälfte
     var wrap=document.createElement('div');
-    wrap.style.cssText='display:flex;flex-direction:column;gap:2px;min-height:58px;'+(isT?'box-shadow:0 0 0 2px var(--ac);border-radius:8px;':'');
+    wrap.style.cssText='display:flex;flex-direction:column;gap:2px;min-height:52px;'+(isT?'border-radius:8px;box-shadow:0 0 0 2px var(--ac);':'');
 
-    // Morning half
-    var mh=document.createElement('div');
-    mh.style.cssText='flex:1;border-radius:6px;border:1px solid var(--b1);background:var(--s2);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;gap:1px;'+(isT?'border-color:var(--ac)55;':'');
-    if(dm){
-      var dmPh=getPhoto(dm.id);
-      mh.style.background=dm.color+'15';mh.style.borderColor=dm.color+'55';
-      mh.innerHTML=(dmPh?'<div style="width:16px;height:16px;border-radius:50%;background-image:url('+dmPh+');background-size:cover;border:1.5px solid '+dm.color+'"></div>':'<div style="font-size:9px;font-weight:700;color:'+dm.color+'">'+dm.name[0]+'</div>')
-        +'<div style="font-size:6px;color:var(--t3);line-height:1">morgens</div>';
-    } else {
-      mh.innerHTML='<div style="font-size:7px;color:var(--t3)">morgens</div>';
+    function makeHalf(person,label,slot){
+      var half=document.createElement('div');
+      var hasP=!!person;
+      half.style.cssText='flex:1;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:3px;padding:2px 3px;transition:opacity 0.1s;min-height:24px;'
+        +(hasP
+          ?'background:'+person.color+'18;border:1.5px solid '+person.color+'55;'
+          :'background:var(--s2);border:1px dashed var(--b2);');
+      if(hasP){
+        var ppPh=getPhoto(person.id);
+        var av=ppPh
+          ?'<div style="width:14px;height:14px;border-radius:50%;background-image:url('+ppPh+');background-size:cover;flex-shrink:0;border:1px solid '+person.color+'"></div>'
+          :'<div style="width:14px;height:14px;border-radius:50%;background:'+person.color+'33;color:'+person.color+';display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;flex-shrink:0">'+person.name[0]+'</div>';
+        half.innerHTML=av+'<span style="font-size:7px;font-weight:600;color:'+person.color+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:28px">'+person.name+'</span>';
+      } else {
+        half.innerHTML='<span style="font-size:8px;color:var(--t3)">'+label+'</span>';
+      }
+      half.onclick=(function(dt,sl){return function(){openEmma(dt,sl);};})(date,slot);
+      return half;
     }
-    mh.onclick=(function(dt){return function(){openEmma(dt,'morning');};})(date);
-
-    // Evening half
-    var eh=document.createElement('div');
-    eh.style.cssText='flex:1;border-radius:6px;border:1px solid var(--b1);background:var(--s2);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;gap:1px;'+(isT?'border-color:var(--ac)55;':'');
-    if(de){
-      var dePh=getPhoto(de.id);
-      eh.style.background=de.color+'15';eh.style.borderColor=de.color+'55';
-      eh.innerHTML=(dePh?'<div style="width:16px;height:16px;border-radius:50%;background-image:url('+dePh+');background-size:cover;border:1.5px solid '+de.color+'"></div>':'<div style="font-size:9px;font-weight:700;color:'+de.color+'">'+de.name[0]+'</div>')
-        +'<div style="font-size:6px;color:var(--t3);line-height:1">abends</div>';
-    } else {
-      eh.innerHTML='<div style="font-size:7px;color:var(--t3)">abends</div>';
-    }
-    eh.onclick=(function(dt){return function(){openEmma(dt,'evening');};})(date);
-
-    wrap.appendChild(mh);wrap.appendChild(eh);erow.appendChild(wrap);
+    wrap.appendChild(makeHalf(dm,'↑ bringt','morning'));
+    wrap.appendChild(makeHalf(de,'↓ holt','evening'));
+    erow.appendChild(wrap);
   });
   grid.appendChild(erow);
 
-  // ── BIRTHDAY ROW ──
+  // ── GEBURTSTAG ROW ──
   var brow=document.createElement('div');
-  brow.style.cssText='display:grid;gap:3px;grid-template-columns:'+cols+';padding:0 2px';
-  var blbl=document.createElement('div');blbl.style.cssText='display:flex;align-items:center;justify-content:center;font-size:13px';blbl.textContent='🎂';brow.appendChild(blbl);
+  brow.style.cssText='display:grid;gap:2px;margin-bottom:4px;grid-template-columns:'+cols+';padding:0 2px';
+  var blbl=document.createElement('div');blbl.style.cssText='display:flex;align-items:center;justify-content:center;font-size:14px';blbl.textContent='🎂';brow.appendChild(blbl);
   dates.forEach(function(date){
     var isT=date===td;var bdays=bdayMap[date];
     var cell=document.createElement('div');
-    cell.style.cssText='border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2px;min-height:24px;'
-      +(bdays?'background:rgba(240,160,80,0.15);border:1px solid rgba(240,160,80,0.4);'+(isT?'box-shadow:0 0 0 2px var(--ac);':''):'opacity:0.1;border:1px solid transparent;');
+    cell.style.cssText='border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2px;min-height:22px;'
+      +(bdays?'background:rgba(240,160,80,0.15);border:1px solid rgba(240,160,80,0.4);'+(isT?'box-shadow:0 0 0 2px var(--ac);':''):'opacity:0.08;border:1px solid transparent;');
     if(bdays){
       var b=bdays[0];var bYear=new Date(b.date+'T12:00:00').getFullYear();var age=new Date(date+'T12:00:00').getFullYear()-bYear;
-      cell.innerHTML='<span style="font-size:9px">🎂</span><span style="font-size:5px;color:var(--or);font-weight:600;text-align:center;line-height:1.2;word-break:break-word">'+b.name.split(' ')[0]+' '+age+'</span>';
+      cell.innerHTML='<span style="font-size:9px">🎂</span><span style="font-size:5px;color:var(--or);font-weight:600;text-align:center;line-height:1.2">'+b.name.split(' ')[0]+' '+age+'</span>';
     }
     brow.appendChild(cell);
   });
   grid.appendChild(brow);
 
-  // Legende
+  // Legende – nur eine, kompakt
   var leg=document.createElement('div');
-  leg.style.cssText='padding:8px 4px 0;display:flex;flex-wrap:wrap;gap:6px';
-  leg.innerHTML='<span style="font-size:10px;color:var(--t3)">🏢 Büro · 🏠 HO · ✈️ Reise · 🌴 Urlaub · 📌 Termin</span>';
+  leg.style.cssText='padding:6px 2px 0;';
+  leg.innerHTML='<span style="font-size:10px;color:var(--t3)">🏢 Büro · 🏠 HO · ✈️ Dienstreise · 🌴 Urlaub · 📌 Termin</span>';
   grid.appendChild(leg);
 }
+
 // EMMA SCREEN
 function renderEmmaScreen(){
   if(!S.members||!S.members.length){document.getElementById('emma-week').innerHTML='<div class="empty">Keine Mitglieder</div>';return;}
