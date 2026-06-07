@@ -1003,7 +1003,7 @@ function _renderWeekGrid(dates){
     });
   });
 
-  var cols='32px 1fr 1fr 1fr 1fr 1fr 3px 1fr 1fr';
+  var cols='32px 1fr 1fr 1fr 1fr 1fr 1fr 1fr';
 
   // Berechne verfügbare Höhe für Kacheln
   // Abzüglich: TopBar (~52px), wknav (~48px), Header-Row (~36px), Legende (~28px), Bday-Row (~28px), Emma-Row, padding
@@ -1029,15 +1029,9 @@ function _renderWeekGrid(dates){
     var d=new Date(date+'T12:00:00');
     var isT=date===td;var isW=isWknd(date);
     var c=document.createElement('div');
-    c.style.cssText='text-align:center;border-radius:6px;padding:3px 1px;'+(isT?'background:var(--ac);':'');
+    c.style.cssText='text-align:center;border-radius:6px;padding:3px 1px;'+(isT?'background:var(--ac);':'')+(i===4?'border-right:2px solid rgba(128,128,128,0.25);':'');
     c.innerHTML='<div style="font-size:9px;font-weight:700;text-transform:uppercase;color:'+(isT?'white':'var(--t3)')+'">'+days[i]+'</div>'
       +'<div style="font-size:'+(isT?'14':'12')+'px;font-weight:'+(isT?'900':'600')+';color:'+(isT?'white':'var(--t1)')+'">'+d.getDate()+'</div>';
-    // Insert divider before Sa (index 5)
-    if(i===4){
-      var div=document.createElement('div');
-      div.style.cssText='width:3px;border-radius:2px;background:rgba(255,255,255,0.08);margin:2px 0;align-self:stretch;';
-      hrow.appendChild(div);
-    }
     hrow.appendChild(c);
   });
   grid.appendChild(hrow);
@@ -1099,16 +1093,11 @@ function _renderWeekGrid(dates){
 
       var centerHtml=vacHtml||apptHtml?'<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;gap:1px">'+vacHtml+apptHtml+'</div>':'';
       cell.innerHTML=iconHtml+centerHtml;
+      if(i===4)cell.style.borderRight='2px solid rgba(128,128,128,0.25)';
       cell.addEventListener('click',(function(mid,dt){return function(){
         if((apptData[(mid+'_'+dt)]||[]).length)openApptModal(mid,dt);
         else openPicker(mid,dt);
       };})(m.id,date));
-      // Divider before Sa
-      if(i===4){
-        var divM=document.createElement('div');
-        divM.style.cssText='width:3px;border-radius:2px;background:rgba(255,255,255,0.08);margin:2px 0;';
-        row.appendChild(divM);
-      }
       row.appendChild(cell);
     });
     grid.appendChild(row);
@@ -1158,12 +1147,7 @@ function _renderWeekGrid(dates){
     }
     wrap.appendChild(makeHalf(dm,'↑ bringt','morning'));
     wrap.appendChild(makeHalf(de,'↓ holt','evening'));
-    // Divider before Sa
-    if(!isW&&dates.indexOf(date)===4){
-      var divE=document.createElement('div');
-      divE.style.cssText='width:3px;border-radius:2px;background:rgba(255,255,255,0.08);margin:2px 0;';
-      erow.appendChild(divE);
-    }
+    if(dates.indexOf(date)===4)wrap.style.borderRight='2px solid rgba(128,128,128,0.25)';
     erow.appendChild(wrap);
   });
   grid.appendChild(erow);
@@ -1181,12 +1165,7 @@ function _renderWeekGrid(dates){
       var b=bdays[0];var age=new Date(date+'T12:00:00').getFullYear()-new Date(b.date+'T12:00:00').getFullYear();
       cell.innerHTML='<span style="font-size:9px">🎂</span><span style="font-size:5px;color:var(--or);font-weight:600;text-align:center;line-height:1.2">'+b.name.split(' ')[0]+' '+age+'</span>';
     }
-    // Divider before Sa
-    if(dates.indexOf(date)===4){
-      var divB=document.createElement('div');
-      divB.style.cssText='width:3px;border-radius:2px;background:rgba(255,255,255,0.08);';
-      brow.appendChild(divB);
-    }
+    if(dates.indexOf(date)===4)cell.style.borderRight='2px solid rgba(128,128,128,0.25)';
     brow.appendChild(cell);
   });
   grid.appendChild(brow);
@@ -1425,11 +1404,11 @@ function renderTermineScreen(){
   var td=today();
   var weekEnd=addDays(td, 7 - new Date(td+'T12:00:00').getDay() || 7);
   var todayDates=[td];
-  var thisWeekDates=getWeek(0).filter(function(d){return d!==td;});
+  var thisWeekDates=getWeek(0).filter(function(d){return d>td;});
   var nextWeekDates=getWeek(1);
-  var monthEnd=addDays(td,60);
+  var monthEnd=addDays(td,90);
   var monthDates=[];
-  for(var mwi=2;mwi<9;mwi++){getWeek(mwi).forEach(function(d){if(d>addDays(td,13)&&d<=monthEnd&&monthDates.indexOf(d)===-1)monthDates.push(d);});}
+  for(var mwi=2;mwi<14;mwi++){getWeek(mwi).forEach(function(d){if(d<=monthEnd&&monthDates.indexOf(d)===-1)monthDates.push(d);});}
 
   // ── AUSSTEHENDE TERMINE (pending, needs my confirmation) ──
   var pendingSec=document.getElementById('termine-pending-sec');
@@ -1606,21 +1585,18 @@ var apptData={};
 
 async function loadAppts(dates){
   if(!S.members||!S.hh)return;
-  var ids=S.members.map(function(m){return m.id;}).join(',');
-  var from=dates[0],to=dates[dates.length-1];
+  var sorted=dates.slice().sort();
+  var from=sorted[0],to=sorted[sorted.length-1];
   try{
-    // Load all appointments for household (including shared/pending)
     var res=await api('appointments?household_id=eq.'+S.hh.id+'&date=gte.'+from+'&date=lte.'+to+'&select=*&order=time_from.asc');
     var data=await res.json();
     apptData={};
     if(Array.isArray(data)){
       data.forEach(function(a){
-        // Add to all participating members' slots
         var mids=a.member_ids&&a.member_ids.length?a.member_ids:[a.member_id];
         mids.forEach(function(mid){
           var key=mid+'_'+a.date;
           if(!apptData[key])apptData[key]=[];
-          // Avoid duplicates
           if(!apptData[key].find(function(x){return x.id===a.id;}))
             apptData[key].push(a);
         });
@@ -2002,7 +1978,7 @@ function go(name){
   document.getElementById('fab-bday').style.display=(name==='birthdays')?'flex':'none';
   document.getElementById('fab-termine').style.display=(name==='termine')?'flex':'none';
   if(name==='home')renderHome();
-  if(name==='termine'){var allTermDates=[];for(var wi=0;wi<8;wi++)allTermDates=allTermDates.concat(getWeek(wi));loadAppts(allTermDates).then(renderTermineScreen);}
+  if(name==='termine'){var allTermDates=[];for(var wi=0;wi<14;wi++)allTermDates=allTermDates.concat(getWeek(wi));loadAppts(allTermDates).then(renderTermineScreen);}
   if(name==='week'){
     renderWeek();loadAll().then(function(){loadBdays().then(function(){syncVacationsToStatuses().then(renderWeek);});});
     if(!document.getElementById('wk-grid').dataset.swipe){document.getElementById('wk-grid').dataset.swipe='1';initSwipe(document.getElementById('wk-grid'),
