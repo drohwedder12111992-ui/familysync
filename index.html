@@ -386,8 +386,9 @@ body{background:var(--bg);color:var(--t1);font-family:var(--fb);height:100dvh;ov
     <div class="tb"><div><div class="tb-title">📌 Termine</div><div class="tb-sub">Alle Termine im Überblick</div></div></div>
     <div class="sec">
       <div id="termine-today-sec"></div>
-      <div id="termine-week-sec" style="margin-top:12px"></div>
-      <div id="termine-month-sec" style="margin-top:12px"></div>
+      <div id="termine-week-sec" style="margin-top:4px"></div>
+      <div id="termine-next-sec" style="margin-top:4px"></div>
+      <div id="termine-month-sec" style="margin-top:4px"></div>
     </div>
   </div>
 
@@ -919,9 +920,27 @@ function _renderWeekGrid(){
         if(s){cell.style.borderColor=m.color+'88';cell.style.background=m.color+'10';}
         var flagIcon=info?'<span style="position:absolute;top:3px;right:3px;font-size:10px;line-height:1">'+info.e+'</span>':'';
         var vacNote=s&&s.status==='vacation'&&s.note?'<span style="font-size:7px;color:'+m.color+';font-weight:600;line-height:1.2;text-align:center;padding:0 2px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block">'+s.note+'</span>':'';
+        // Verbesserte Kachel-Darstellung für Termine
         var apptHtml='';
-        if(appts.length===1){apptHtml='<div style="font-size:7px;color:'+m.color+';line-height:1.2;text-align:center;padding:0 2px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(appts[0].time_from&&appts[0].time_from!=='00:00'?appts[0].time_from.slice(0,5)+' ':'')+appts[0].description+'</div>';}
-        else if(appts.length>1){apptHtml='<div style="font-size:9px;font-weight:700;color:'+m.color+'">'+appts.length+'</div><div style="font-size:6px;color:var(--t3)">Termine</div>';}
+        if(appts.length===1){
+          var t0=appts[0];
+          var tStr=t0.time_from&&t0.time_from!=='00:00'?t0.time_from.slice(0,5):'';
+          apptHtml='<div style="display:flex;flex-direction:column;align-items:center;gap:1px;width:100%">'
+            +(tStr?'<div style="font-size:7px;font-weight:700;color:'+m.color+';background:'+m.color+'18;border-radius:3px;padding:1px 3px;line-height:1.3">'+tStr+'</div>':'')
+            +'<div style="font-size:6px;color:var(--t2);line-height:1.2;text-align:center;padding:0 2px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+t0.description+'</div>'
+            +'</div>';
+        } else if(appts.length===2){
+          // Zwei Zeitpillen untereinander
+          apptHtml='<div style="display:flex;flex-direction:column;align-items:center;gap:1px;width:100%">'
+            +appts.slice(0,2).map(function(ap){
+              var ts=ap.time_from&&ap.time_from!=='00:00'?ap.time_from.slice(0,5):'📌';
+              return '<div style="font-size:6px;font-weight:700;color:'+m.color+';background:'+m.color+'18;border-radius:3px;padding:1px 3px;line-height:1.4;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+ts+'</div>';
+            }).join('')
+            +'</div>';
+        } else if(appts.length>2){
+          apptHtml='<div style="font-size:9px;font-weight:700;color:'+m.color+'">'+appts.length+'×</div>'
+            +'<div style="font-size:6px;color:var(--t3)">📌</div>';
+        }
         var mainContent=s?'':isW?'':'<span style="font-size:16px;color:var(--t3)">+</span>';
         cell.innerHTML=flagIcon+'<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;width:100%;height:100%;padding-top:'+(info?'6px':'0')+'">'+mainContent+vacNote+apptHtml+'</div>';
         (function(mid,dt,st){cell.onclick=function(){if(st&&st.status==='appt'){openApptModal(mid,dt);}else{openPicker(mid,dt);}};})(m.id,date,getSt(m.id,date));
@@ -1163,35 +1182,72 @@ function editBday(id){var b=bdayData.find(function(x){return x.id===id;});if(!b)
 async function saveBday(){var name=document.getElementById('bday-name').value.trim(),date=document.getElementById('bday-date').value,editId=document.getElementById('bday-edit-id').value;if(!name||!date){toast('⚠️','Fehlende Felder','Bitte Name und Datum eingeben.');return;}closeM('m-bday');try{if(editId){await api('birthdays?id=eq.'+editId,{method:'PATCH',body:JSON.stringify({name:name,date:date})});}else{await api('birthdays',{method:'POST',body:JSON.stringify({household_id:S.hh.id,name:name,date:date})});}await loadBdays();renderBdays();renderWeek();toast('🎂','Gespeichert',name+' eingetragen!');}catch(e){toast('❌','Fehler','Bitte zuerst die birthdays-Tabelle in Supabase anlegen.');console.error(e);}}
 async function deleteBday(){var id=document.getElementById('bday-edit-id').value;if(!id||!confirm('Geburtstag löschen?'))return;closeM('m-bday');try{await api('birthdays?id=eq.'+id,{method:'DELETE'});await loadBdays();renderBdays();renderWeek();toast('✕','Gelöscht','Geburtstag entfernt.');}catch(e){console.error(e);}}
 
-// TERMINE SCREEN
+// TERMINE SCREEN – neu mit User-Gruppierung + "Nächste Woche"
 function renderTermineScreen(){
-  var td=today();var weekDates=getWeek(0).filter(function(d){return !isWknd(d);});var monthDates=get4Weeks();
+  var td=today();
+  var weekEnd=addDays(td, 7 - new Date(td+'T12:00:00').getDay() || 7);
+  // Datumsbereiche
+  var todayDates=[td];
+  var thisWeekDates=getWeek(0).filter(function(d){return d!==td;});
+  var nextWeekDates=getWeek(1);
+  var monthDates=get4Weeks().filter(function(d){return d>addDays(td,13);});
+
+  function buildGroupedHtml(dates, emptyMsg){
+    // Sammle alle Termine für diese Daten, gruppiert nach Member
+    var byMember={};
+    S.members.forEach(function(m){ byMember[m.id]=[]; });
+    dates.forEach(function(date){
+      S.members.forEach(function(m){
+        var appts=(apptData[m.id+'_'+date]||[]);
+        appts.forEach(function(a){ byMember[m.id].push({m:m,a:a,date:date}); });
+      });
+    });
+    var hasAny=S.members.some(function(m){ return byMember[m.id].length>0; });
+    if(!hasAny) return '<div class="empty" style="padding:8px 0">'+emptyMsg+'</div>';
+
+    var html='';
+    S.members.forEach(function(m){
+      var items=byMember[m.id];
+      if(!items.length) return;
+      // User-Gruppenheader
+      var ph=getPhoto(m.id);
+      var avHtml=ph
+        ?'<div style="width:22px;height:22px;border-radius:50%;background-image:url('+ph+');background-size:cover;background-position:center;border:1.5px solid '+m.color+'"></div>'
+        :'<div style="width:22px;height:22px;border-radius:50%;background:'+m.color+'22;color:'+m.color+';border:1.5px solid '+m.color+';display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">'+m.name[0]+'</div>';
+      html+='<div style="display:flex;align-items:center;gap:7px;margin:10px 0 5px;padding:0 2px">'
+        +avHtml
+        +'<span style="font-size:12px;font-weight:700;color:'+m.color+'">'+m.name+'</span>'
+        +'<span style="font-size:11px;color:var(--t3)">· '+items.length+' Termin'+(items.length>1?'e':'')+'</span>'
+        +'</div>';
+      // Termine dieser Person chronologisch
+      items.sort(function(a,b){
+        var da=a.date+(a.a.time_from||'00:00');
+        var db=b.date+(b.a.time_from||'00:00');
+        return da.localeCompare(db);
+      });
+      items.forEach(function(x){ html+=termineCardHtml(x.m,x.a,x.date); });
+    });
+    return html;
+  }
+
+  // HEUTE
   var todaySec=document.getElementById('termine-today-sec');
-  var todayHtml='<div class="sectitle">Heute</div>';
-  var todayItems=[];
-  S.members.forEach(function(m){var appts=(apptData[m.id+'_'+td]||[]);appts.forEach(function(a){todayItems.push({m:m,a:a,date:td});});});
-  if(todayItems.length){todayItems.sort(function(a,b){return (a.a.time_from||a.a.time||'').localeCompare(b.a.time_from||b.a.time||'');});todayHtml+=todayItems.map(function(x){return termineCardHtml(x.m,x.a,x.date);}).join('');}
-  else{todayHtml+='<div class="empty" style="padding:8px 0">Keine Termine heute</div>';}
-  todaySec.innerHTML=todayHtml;
-  // FIX 7: Attach toggle listeners after render
+  todaySec.innerHTML='<div class="sectitle">Heute</div>'+buildGroupedHtml(todayDates,'Keine Termine heute');
   attachTermineCardListeners(todaySec);
 
+  // DIESE WOCHE
   var weekSec=document.getElementById('termine-week-sec');
-  var weekHtml='<div class="sectitle">Diese Woche</div>';
-  var weekItems=[];
-  weekDates.filter(function(d){return d!==td;}).forEach(function(date){S.members.forEach(function(m){var appts=(apptData[m.id+'_'+date]||[]);appts.forEach(function(a){weekItems.push({m:m,a:a,date:date});});});});
-  if(weekItems.length){weekHtml+=weekItems.map(function(x){return termineCardHtml(x.m,x.a,x.date);}).join('');}
-  else{weekHtml+='<div class="empty" style="padding:8px 0">Keine weiteren Termine diese Woche</div>';}
-  weekSec.innerHTML=weekHtml;
+  weekSec.innerHTML='<div class="sectitle" style="margin-top:4px">Diese Woche</div>'+buildGroupedHtml(thisWeekDates,'Keine weiteren Termine diese Woche');
   attachTermineCardListeners(weekSec);
 
+  // NÄCHSTE WOCHE
+  var nextSec=document.getElementById('termine-next-sec');
+  nextSec.innerHTML='<div class="sectitle" style="margin-top:4px">Nächste Woche</div>'+buildGroupedHtml(nextWeekDates,'Keine Termine nächste Woche');
+  attachTermineCardListeners(nextSec);
+
+  // DIESEN MONAT
   var monthSec=document.getElementById('termine-month-sec');
-  var monthHtml='<div class="sectitle">Diesen Monat</div>';
-  var monthItems=[];
-  monthDates.filter(function(d){return d>addDays(td,7);}).forEach(function(date){S.members.forEach(function(m){var appts=(apptData[m.id+'_'+date]||[]);appts.forEach(function(a){monthItems.push({m:m,a:a,date:date});});});});
-  if(monthItems.length){monthHtml+=monthItems.map(function(x){return termineCardHtml(x.m,x.a,x.date);}).join('');}
-  else{monthHtml+='<div class="empty" style="padding:8px 0">Keine weiteren Termine diesen Monat</div>';}
-  monthSec.innerHTML=monthHtml;
+  monthSec.innerHTML='<div class="sectitle" style="margin-top:4px">Diesen Monat</div>'+buildGroupedHtml(monthDates,'Keine weiteren Termine diesen Monat');
   attachTermineCardListeners(monthSec);
 }
 
@@ -1420,7 +1476,7 @@ function go(name){
   document.getElementById('fab-vac').style.display=(name==='vacation')?'flex':'none';
   document.getElementById('fab-bday').style.display=(name==='birthdays')?'flex':'none';
   if(name==='home')renderHome();
-  if(name==='termine'){var allD=get4Weeks();var wd=getWeek(0);loadAppts(allD.concat(wd)).then(renderTermineScreen);}
+  if(name==='termine'){var allD=get4Weeks();var wd=getWeek(0);var nwd=getWeek(1);loadAppts(allD.concat(wd).concat(nwd)).then(renderTermineScreen);}
   if(name==='week'){
     renderWeek();loadAll().then(function(){loadBdays().then(function(){syncVacationsToStatuses().then(renderWeek);});});
     if(!document.getElementById('wk-grid').dataset.swipe){document.getElementById('wk-grid').dataset.swipe='1';initSwipe(document.getElementById('wk-grid'),function(){S.wkOff++;loadAll().then(function(){loadBdays().then(function(){syncVacationsToStatuses().then(renderWeek);});});},function(){S.wkOff--;loadAll().then(function(){loadBdays().then(function(){syncVacationsToStatuses().then(renderWeek);});});});}
