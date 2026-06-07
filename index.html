@@ -1500,27 +1500,50 @@ var WMO_DESC={0:'Klarer Himmel',1:'Überwiegend klar',2:'Teilweise bewölkt',3:'
 
 async function loadWeather(){
   var el=document.getElementById('weather-widget');if(!el)return;
-  // Check cache (30 min)
-  var now=Date.now();
-  if(weatherCache.data&&(now-weatherCache.ts)<1800000){renderWeatherWidget(weatherCache.data);return;}
-  // Show loading
+  if(weatherCache.data&&(Date.now()-weatherCache.ts)<1800000){renderWeatherWidget(weatherCache.data);return;}
+
+  // Gecachte Koordinaten aus localStorage laden (24h gültig)
+  var cachedCoords=null;
+  try{
+    var cc=localStorage.getItem('fs_location');
+    if(cc){var parsed=JSON.parse(cc);if(Date.now()-parsed.ts<86400000)cachedCoords=parsed;}
+  }catch(e){}
+
+  if(cachedCoords){
+    fetchWeatherData(cachedCoords.lat,cachedCoords.lon);
+    return;
+  }
+
+  // Nur wenn kein Cache: GPS abfragen
   el.innerHTML='<div class="weather-card"><div class="weather-icon">🌤️</div><div class="weather-info"><div class="weather-temp">–°</div><div class="weather-desc">Standort wird ermittelt…</div></div></div>';
-  // Get location
   if(!navigator.geolocation){el.innerHTML='';return;}
-  navigator.geolocation.getCurrentPosition(async function(pos){
+  navigator.geolocation.getCurrentPosition(function(pos){
     var lat=pos.coords.latitude.toFixed(4),lon=pos.coords.longitude.toFixed(4);
-    weatherCache.lat=lat;weatherCache.lon=lon;
-    try{
-      var url='https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=temperature_2m,weathercode,windspeed_10m,relativehumidity_2m&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto&forecast_days=1';
-      var res=await fetch(url);var data=await res.json();
-      // Reverse geocode city name
-      var geoUrl='https://nominatim.openstreetmap.org/reverse?lat='+lat+'&lon='+lon+'&format=json';
-      var city='';
-      try{var geo=await fetch(geoUrl,{headers:{'Accept-Language':'de'}});var geoData=await geo.json();city=geoData.address&&(geoData.address.city||geoData.address.town||geoData.address.village||geoData.address.suburb)||'';}catch(e){}
-      weatherCache.data={current:data.current,daily:data.daily,city:city};weatherCache.ts=Date.now();
-      renderWeatherWidget(weatherCache.data);
-    }catch(e){el.innerHTML='';}
+    localStorage.setItem('fs_location',JSON.stringify({lat:lat,lon:lon,ts:Date.now()}));
+    fetchWeatherData(lat,lon);
   },function(){el.innerHTML='';},{timeout:8000});
+}
+
+async function fetchWeatherData(lat,lon){
+  var el=document.getElementById('weather-widget');
+  try{
+    var url='https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=temperature_2m,weathercode,windspeed_10m,relativehumidity_2m&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto&forecast_days=1';
+    var res=await fetch(url);var data=await res.json();
+    var city=localStorage.getItem('fs_city')||'';
+    // Reverse geocode nur wenn kein City-Cache
+    if(!city){
+      try{
+        var geoUrl='https://nominatim.openstreetmap.org/reverse?lat='+lat+'&lon='+lon+'&format=json';
+        var geo=await fetch(geoUrl,{headers:{'Accept-Language':'de'}});
+        var geoData=await geo.json();
+        city=geoData.address&&(geoData.address.city||geoData.address.town||geoData.address.village||geoData.address.suburb)||'';
+        if(city)localStorage.setItem('fs_city',city);
+      }catch(e){}
+    }
+    weatherCache.data={current:data.current,daily:data.daily,city:city};
+    weatherCache.ts=Date.now();
+    renderWeatherWidget(weatherCache.data);
+  }catch(e){if(el)el.innerHTML='';}
 }
 
 function renderWeatherWidget(d){
