@@ -864,13 +864,13 @@ function setupEventListeners(){
   document.getElementById('btn-save-bday').onclick=saveBday;
   document.getElementById('btn-del-bday').onclick=deleteBday;
   document.getElementById('btn-cancel-bday').onclick=function(){closeM('m-bday');};
-  document.getElementById('btn-copy-code').onclick=copyCode;
-  document.getElementById('btn-logout').onclick=logout;
-  document.getElementById('photo-input').onchange=handlePhoto;
+  (function(){var _x=document.getElementById('btn-copy-code');if(_x)_x.onclick=copyCode;})();
+  (function(){var _x=document.getElementById('btn-logout');if(_x)_x.onclick=logout;})();
+  (function(){var _x=document.getElementById('photo-input');if(_x)_x.onchange=handlePhoto;})();
   var emmaInput=document.getElementById('emma-photo-input');
   if(emmaInput)emmaInput.onchange=handleEmmaPhoto;
-  document.getElementById('btn-crop-save').onclick=saveCroppedPhoto;
-  document.getElementById('btn-crop-cancel').onclick=function(){document.getElementById('m-crop').style.display='none';document.getElementById('photo-input').value='';};
+  (function(){var _x=document.getElementById('btn-crop-save');if(_x)_x.onclick=saveCroppedPhoto;})();
+  (function(){var _x=document.getElementById('btn-crop-cancel');if(_x)_x.onclick=function(){document.getElementById('m-crop').style.display='none';document.getElementById('photo-input').value='';};})();
   document.getElementById('btn-push-yes').onclick=reqPush;
   document.getElementById('btn-push-no').onclick=dismissPush;
   // Push-Button via delegation da er im Profil-Screen liegt
