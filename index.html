@@ -873,15 +873,16 @@ function setupEventListeners(){
   document.getElementById('btn-crop-cancel').onclick=function(){document.getElementById('m-crop').style.display='none';document.getElementById('photo-input').value='';};
   document.getElementById('btn-push-yes').onclick=reqPush;
   document.getElementById('btn-push-no').onclick=dismissPush;
-  document.getElementById('btn-push-activate').onclick=async function(){
-    if(Notification.permission==='granted'){
-      await subscribeWebPush();
-      updatePushStatus();
-    } else {
-      await reqPush();
-      updatePushStatus();
+  // Push-Button via delegation da er im Profil-Screen liegt
+  document.addEventListener('click',function(e){
+    if(e.target&&e.target.id==='btn-push-activate'){
+      if(Notification.permission==='granted'){
+        subscribeWebPush();
+      } else {
+        reqPush();
+      }
     }
-  };
+  });
   document.querySelectorAll('.overlay').forEach(function(o){o.onclick=function(e){if(e.target===o)o.classList.remove('on');};});
 }
 
