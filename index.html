@@ -375,9 +375,6 @@ body{background:var(--bg);color:var(--t1);font-family:var(--fb);height:100dvh;ov
     <!-- FIX 4: Show only month name -->
     <div class="wknav"><div class="wkbtn" id="btn-wk-prev">‹</div><div class="wkrange" id="wk-range">–</div><div class="wkbtn" id="btn-wk-next">›</div></div>
     <div id="wk-grid"></div>
-    <div style="padding:8px 13px 0;display:flex;flex-wrap:wrap;gap:7px">
-      <span style="font-size:11px;color:var(--t3)">🏢 Büro &nbsp; 🏠 Homeoffice &nbsp; ✈️ Dienstreise &nbsp; 🌴 Urlaub &nbsp; 🏖️ Frei</span>
-    </div>
   </div>
 
   <!-- TERMINE -->
@@ -579,7 +576,7 @@ var col1=COLORS[0],col2=COLORS[1];
 var chatHist=[],lastActId=null;
 var pickerCtx={},emmaCtx={};
 var SM={office:{e:'🏢',l:'Büro',c:'co'},home:{e:'🏠',l:'Homeoffice',c:'ch'},travel:{e:'✈️',l:'Dienstreise',c:'ct'},vacation:{e:'🌴',l:'Urlaub',c:'cv'},appt:{e:'📌',l:'Termin',c:'ca'}};
-var WC={office:'wkco',home:'wkch',travel:'wkct',vacation:'wkcv',appt:'wkca',other:'wkcf'};
+var WC={office:'wkco',home:'wkch',travel:'wkct',vacation:'wkcv',appt:'wkca'};
 
 // FIX 8: THEME SYSTEM
 function setTheme(t){
@@ -696,14 +693,58 @@ function showApp(){
   initSwipeStatus();
   initServiceWorker();
   updAvatars();
-  loadBdays().then(function(){syncVacationsToStatuses().then(function(){updAvatars();renderHome();renderWeek();if(pushEnabled)scheduleBdayCheck();});});
+  loadBdays().then(function(){
+    syncVacationsToStatuses().then(function(){
+      updAvatars();renderHome();renderWeek();if(pushEnabled)scheduleBdayCheck();
+    });
+  });
   initPush();
+
+  // POLL: Nur Partner-Änderungen laden, eigene Einträge NIE überschreiben
   setInterval(async function(){
-    if(_isSaving)return; // Skip poll während einer Speicher-Operation
-    var pS=JSON.stringify(S.statuses),pD=JSON.stringify(S.dogs);
-    await loadAll();
-    if(JSON.stringify(S.statuses)!==pS||JSON.stringify(S.dogs)!==pD){renderHome();var cur=document.querySelector('.screen.on');if(cur&&cur.id==='screen-week')renderWeek();}
-    renderActs();checkNewAct();
+    if(!S.me||!S.hh)return;
+    try{
+      var ids=S.members.map(function(m){return m.id;}).join(',');
+      var from=addDays(today(),-30),to=addDays(today(),60);
+      var now=Date.now();
+
+      // Statuses: nur Partner-Einträge mergen, eigene schützen
+      var sRes=await api('daily_statuses?member_id=in.('+ids+')&date=gte.'+from+'&date=lte.'+to+'&select=*');
+      var sts=await sRes.json();
+      var changed=false;
+      sts.forEach(function(s){
+        var key=s.member_id+'_'+s.date;
+        var isMine=s.member_id===S.me.id;
+        var isProtected=_protected[key]&&_protected[key]>now;
+        // Eigene geschützte Einträge NICHT überschreiben
+        if(isMine&&isProtected)return;
+        // Nur updaten wenn wirklich anders
+        var cur=S.statuses[key];
+        if(!cur||cur.status!==s.status||cur.note!==s.note){
+          S.statuses[key]=s;changed=true;
+        }
+      });
+      // Abgelaufene Schutzen bereinigen
+      Object.keys(_protected).forEach(function(k){if(_protected[k]<=now)delete _protected[k];});
+
+      // Dog transfers
+      var dRes=await api('dog_transfers?household_id=eq.'+S.hh.id+'&date=gte.'+from+'&date=lte.'+to+'&select=*');
+      var dogs=await dRes.json();
+      var newDogs={};dogs.forEach(function(d){newDogs[d.date]=d;});
+      var dogChanged=JSON.stringify(newDogs)!==JSON.stringify(S.dogs);
+      S.dogs=newDogs;
+
+      // Activity log
+      var aRes=await api('activity_log?household_id=eq.'+S.hh.id+'&select=*&order=created_at.desc&limit=20');
+      S.acts=await aRes.json();
+      renderActs();checkNewAct();
+
+      if(changed||dogChanged){
+        renderHome();
+        var cur2=document.querySelector('.screen.on');
+        if(cur2&&cur2.id==='screen-week')renderWeek();
+      }
+    }catch(e){console.error('poll:',e);}
   },20000);
 }
 
