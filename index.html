@@ -389,6 +389,7 @@ body{background:var(--bg);color:var(--t1);font-family:var(--fb);height:100dvh;ov
       <div id="termine-month-sec" style="margin-top:4px"></div>
     </div>
   </div>
+  <button class="fab" id="fab-termine">+</button>
 
   <!-- URLAUB -->
   <div class="screen" id="screen-vacation">
@@ -493,6 +494,43 @@ body{background:var(--bg);color:var(--t1);font-family:var(--fb);height:100dvh;ov
   <button class="btn" style="margin-top:0" id="btn-save-travel">Eintragen ✈️</button>
   <button class="mcancel" style="margin-top:8px" id="btn-cancel-travel">Abbrechen</button></div>
 </div>
+<!-- NEUER TERMIN aus Termine-Tab (mit Datum) -->
+<div class="overlay" id="m-new-termin">
+  <div class="modal">
+    <div class="mhandle"></div>
+    <div class="mtitle">📌 Neuer Termin</div>
+    <div class="msub">Datum, Teilnehmer und Uhrzeit wählen</div>
+    <!-- Datum -->
+    <div style="margin-bottom:12px">
+      <div class="flabel">Datum</div>
+      <input type="date" id="nt-date" class="dateinp">
+    </div>
+    <!-- Teilnehmer -->
+    <div style="margin-bottom:12px">
+      <div class="flabel">Wer nimmt teil?</div>
+      <div id="nt-members" style="display:flex;gap:7px;flex-wrap:wrap;margin-top:6px"></div>
+    </div>
+    <!-- Zeit -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+      <div>
+        <div class="flabel">Von</div>
+        <input type="time" id="nt-time-from" class="dateinp" placeholder="09:00">
+      </div>
+      <div>
+        <div class="flabel">Bis</div>
+        <input type="time" id="nt-time-to" class="dateinp" placeholder="10:00">
+      </div>
+    </div>
+    <!-- Beschreibung -->
+    <div style="margin-bottom:14px">
+      <div class="flabel">Beschreibung</div>
+      <input type="text" id="nt-desc" class="inp" placeholder="z.B. Tennis, Arzt, Meeting…" style="margin-top:5px">
+    </div>
+    <button class="btn" style="margin-top:0" id="btn-save-new-termin">Termin speichern 📌</button>
+    <button class="mcancel" style="margin-top:8px" id="btn-cancel-new-termin">Abbrechen</button>
+  </div>
+</div>
+
 <!-- TERMIN MODAL – mit Teilnehmer-Auswahl -->
 <div class="overlay" id="m-appt">
   <div class="modal">
@@ -808,6 +846,9 @@ function setupEventListeners(){
   document.getElementById('btn-save-appt').onclick=saveAppt;
   document.getElementById('btn-cancel-appt').onclick=function(){closeM('m-appt');apptCtx.editId=null;document.getElementById('btn-save-appt').textContent='+ Hinzufügen';};
   document.getElementById('fab-vac').onclick=openVacModal;
+  document.getElementById('fab-termine').onclick=openNewTerminModal;
+  document.getElementById('btn-save-new-termin').onclick=saveNewTermin;
+  document.getElementById('btn-cancel-new-termin').onclick=function(){closeM('m-new-termin');};
   document.getElementById('btn-save-vac').onclick=saveVacProposal;
   document.getElementById('btn-cancel-vac').onclick=function(){closeM('m-vac');};
   document.getElementById('fab-bday').onclick=openBdayModal;
@@ -944,7 +985,6 @@ function _renderWeekGrid(dates){
   var td=today();
   var days=['Mo','Di','Mi','Do','Fr','Sa','So'];
 
-  // Header
   var first=new Date(dates[0]+'T12:00:00'),last=new Date(dates[6]+'T12:00:00');
   document.getElementById('wk-range').textContent=
     'KW '+getKW(first)+' · '+first.toLocaleDateString('de-DE',{day:'numeric',month:'short'})+' – '+last.toLocaleDateString('de-DE',{day:'numeric',month:'short',year:'numeric'});
@@ -959,21 +999,35 @@ function _renderWeekGrid(dates){
     });
   });
 
-  // Sa/So deutlich schmaler – Fokus auf Arbeitswoche
   var cols='32px 1fr 1fr 1fr 1fr 1fr 0.45fr 0.45fr';
-  var grid=document.getElementById('wk-grid');grid.innerHTML='';
+
+  // Berechne verfügbare Höhe für Kacheln
+  // Abzüglich: TopBar (~52px), wknav (~48px), Header-Row (~36px), Legende (~28px), Bday-Row (~28px), Emma-Row, padding
+  var nMembers=S.members.length;
+  var availH=window.innerHeight;
+  var usedH=52+48+36+28+28+60; // feste Bereiche
+  var remainH=availH-usedH;
+  // Aufteilen auf Members + Emma
+  var cellH=Math.max(52, Math.floor(remainH/(nMembers+1)));
+  var emmaCellH=Math.max(44, Math.floor(cellH*0.7));
+  var bdayCellH=26;
+
+  var grid=document.getElementById('wk-grid');
+  grid.innerHTML='';
+  // Grid selbst als flex-column damit es den screen füllt
+  grid.style.cssText='padding:0 10px;display:flex;flex-direction:column;flex:1;gap:0;';
 
   // ── HEADER ROW ──
   var hrow=document.createElement('div');
-  hrow.style.cssText='display:grid;gap:2px;margin-bottom:5px;grid-template-columns:'+cols+';padding:0 2px';
+  hrow.style.cssText='display:grid;gap:2px;margin-bottom:4px;grid-template-columns:'+cols+';padding:0 2px;flex-shrink:0';
   hrow.appendChild(document.createElement('div'));
   dates.forEach(function(date,i){
     var d=new Date(date+'T12:00:00');
     var isT=date===td;var isW=isWknd(date);
     var c=document.createElement('div');
     c.style.cssText='text-align:center;border-radius:6px;padding:3px 1px;'+(isT?'background:var(--ac);':'');
-    c.innerHTML='<div style="font-size:'+(isW?'8':'9')+'px;font-weight:700;text-transform:uppercase;color:'+(isT?'white':isW?'var(--t3)':'var(--t3)')+(isW&&!isT?';opacity:0.5':'')+'">'+days[i]+'</div>'
-      +'<div style="font-size:'+(isT?'14':isW?'9':'11')+'px;font-weight:'+(isT?'900':'600')+';color:'+(isT?'white':isW?'var(--t3)':'var(--t1)')+(isW&&!isT?';opacity:0.5':'')+'">'+d.getDate()+'</div>';
+    c.innerHTML='<div style="font-size:'+(isW?'8':'9')+'px;font-weight:700;text-transform:uppercase;color:'+(isT?'white':'var(--t3)')+(isW&&!isT?';opacity:0.5':'')+'">'+days[i]+'</div>'
+      +'<div style="font-size:'+(isT?'14':isW?'10':'12')+'px;font-weight:'+(isT?'900':'600')+';color:'+(isT?'white':isW?'var(--t3)':'var(--t1)')+(isW&&!isT?';opacity:0.5':'')+'">'+d.getDate()+'</div>';
     hrow.appendChild(c);
   });
   grid.appendChild(hrow);
@@ -981,9 +1035,8 @@ function _renderWeekGrid(dates){
   // ── MEMBER ROWS ──
   S.members.forEach(function(m){
     var row=document.createElement('div');
-    row.style.cssText='display:grid;gap:2px;margin-bottom:4px;grid-template-columns:'+cols+';padding:0 2px';
+    row.style.cssText='display:grid;gap:2px;margin-bottom:3px;grid-template-columns:'+cols+';padding:0 2px;flex-shrink:0';
 
-    // Avatar label
     var ph=getPhoto(m.id);
     var lbl=document.createElement('div');
     lbl.style.cssText='display:flex;align-items:center;justify-content:center;';
@@ -1000,56 +1053,52 @@ function _renderWeekGrid(dates){
       var hasAppt=appts.length>0;
 
       var cell=document.createElement('div');
-      var cellH=isW?'min-height:52px':'min-height:70px';
-      cell.style.cssText='border-radius:8px;cursor:pointer;border:1px solid;padding:4px 2px;'+cellH+';display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:2px;transition:all 0.1s;overflow:hidden;'
+      cell.style.cssText='border-radius:8px;cursor:pointer;border:1px solid;padding:4px 2px;height:'+cellH+'px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:2px;transition:all 0.1s;overflow:hidden;'
         +(isT?'border-color:var(--ac);box-shadow:0 0 0 2px var(--ac);':'')
         +(isPast&&!isT?'opacity:0.38;':'')
         +(isW?'opacity:'+(isPast?'0.22':'0.42')+';background:var(--s1);border-color:var(--b1);'
           :(s?'background:'+m.color+'13;border-color:'+m.color+'60;':'background:var(--s2);border-color:var(--b1);'));
 
-      // Status-Icon oben
       var iconHtml='';
       if(info||hasAppt){
         var icns=(info?info.e:'')+(hasAppt?'📌':'');
-        iconHtml='<div style="font-size:12px;line-height:1.1;margin-top:1px">'+icns+'</div>';
+        iconHtml='<div style="font-size:'+Math.min(16,cellH*0.25)+'px;line-height:1.1;margin-top:2px">'+icns+'</div>';
       } else if(!isW){
-        iconHtml='<div style="font-size:16px;color:var(--b2);margin-top:4px">+</div>';
+        iconHtml='<div style="font-size:'+Math.min(18,cellH*0.3)+'px;color:var(--b2);margin-top:4px">+</div>';
       }
 
-      // Urlaubs-Name
       var vacHtml=s&&s.status==='vacation'&&s.note&&!isW
-        ?'<div style="font-size:6px;color:'+m.color+';font-weight:600;text-align:center;padding:0 2px;word-break:break-word;line-height:1.3">'+s.note+'</div>':'';
+        ?'<div style="font-size:'+Math.min(8,cellH*0.12)+'px;color:'+m.color+';font-weight:600;text-align:center;padding:0 2px;word-break:break-word;line-height:1.3">'+s.note+'</div>':'';
 
-      // Termin-Details (nur Mo-Fr)
       var apptHtml='';
       if(!isW&&appts.length===1){
-        var t0=appts[0];
-        var tStr=t0.time_from&&t0.time_from!=='00:00'?t0.time_from.slice(0,5):'';
-        if(tStr)apptHtml+='<div style="font-size:7px;font-weight:700;color:'+m.color+';background:'+m.color+'22;border-radius:3px;padding:1px 4px;line-height:1.4">'+tStr+'</div>';
-        apptHtml+='<div style="font-size:6px;color:var(--t2);line-height:1.3;text-align:center;padding:0 2px;max-width:100%;word-break:break-word;white-space:normal">'+t0.description+'</div>';
+        var t0=appts[0];var tStr=t0.time_from&&t0.time_from!=='00:00'?t0.time_from.slice(0,5):'';
+        var fs=Math.min(8,Math.max(6,cellH*0.11));
+        if(tStr)apptHtml+='<div style="font-size:'+fs+'px;font-weight:700;color:'+m.color+';background:'+m.color+'22;border-radius:3px;padding:1px 4px;line-height:1.4">'+tStr+'</div>';
+        apptHtml+='<div style="font-size:'+(fs-1)+'px;color:var(--t2);line-height:1.3;text-align:center;padding:0 2px;max-width:100%;word-break:break-word;white-space:normal">'+t0.description+'</div>';
       } else if(!isW&&appts.length>1){
+        var fs2=Math.min(7,Math.max(6,cellH*0.10));
         appts.slice(0,2).forEach(function(ap){
           var ts=ap.time_from&&ap.time_from!=='00:00'?ap.time_from.slice(0,5):'·';
-          apptHtml+='<div style="font-size:6px;font-weight:700;color:'+m.color+';background:'+m.color+'22;border-radius:3px;padding:1px 3px;line-height:1.4;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+ts+'</div>';
+          apptHtml+='<div style="font-size:'+fs2+'px;font-weight:700;color:'+m.color+';background:'+m.color+'22;border-radius:3px;padding:1px 3px;line-height:1.4;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+ts+'</div>';
         });
-        if(appts.length>2)apptHtml+='<div style="font-size:6px;color:var(--t3)">+'+( appts.length-2)+'</div>';
+        if(appts.length>2)apptHtml+='<div style="font-size:'+fs2+'px;color:var(--t3)">+'+( appts.length-2)+'</div>';
       }
 
       cell.innerHTML=iconHtml+vacHtml+apptHtml;
-
-      cell.addEventListener('click',(function(mid,dt,st){return function(){
-        if((apptData[(mid+'_'+dt)]||[]).length) openApptModal(mid,dt);
+      cell.addEventListener('click',(function(mid,dt){return function(){
+        if((apptData[(mid+'_'+dt)]||[]).length)openApptModal(mid,dt);
         else openPicker(mid,dt);
-      };})(m.id,date,s));
+      };})(m.id,date));
       row.appendChild(cell);
     });
     grid.appendChild(row);
   });
 
-  // ── EMMA ROW – kompakt, eine Zeile ──
+  // ── EMMA ROW ──
   var emmaPh=getEmmaPhoto();
   var erow=document.createElement('div');
-  erow.style.cssText='display:grid;gap:2px;margin-bottom:4px;grid-template-columns:'+cols+';padding:0 2px';
+  erow.style.cssText='display:grid;gap:2px;margin-bottom:3px;grid-template-columns:'+cols+';padding:0 2px;flex-shrink:0';
 
   var elbl=document.createElement('div');
   elbl.style.cssText='display:flex;align-items:center;justify-content:center;';
@@ -1062,25 +1111,21 @@ function _renderWeekGrid(dates){
     var isT=date===td;var isW=isWknd(date);
     if(isW){
       var empty=document.createElement('div');
-      empty.style.cssText='border-radius:8px;background:var(--s1);border:1px solid var(--b1);opacity:0.15;min-height:52px';
+      empty.style.cssText='border-radius:8px;background:var(--s1);border:1px solid var(--b1);opacity:0.15;height:'+emmaCellH+'px';
       erow.appendChild(empty);return;
     }
     var dog=S.dogs[date];
     var dm=dog&&dog.morning_member_id?byId(dog.morning_member_id):null;
     var de=dog&&dog.evening_member_id?byId(dog.evening_member_id):null;
 
-    // Kompakte Zelle: morgens oben, abends unten – voller Tap pro Hälfte
     var wrap=document.createElement('div');
-    wrap.style.cssText='display:flex;flex-direction:column;gap:2px;min-height:52px;'+(isT?'border-radius:8px;box-shadow:0 0 0 2px var(--ac);':'');
+    wrap.style.cssText='display:flex;flex-direction:column;gap:2px;height:'+emmaCellH+'px;'+(isT?'border-radius:8px;box-shadow:0 0 0 2px var(--ac);':'');
 
     function makeHalf(person,label,slot){
       var half=document.createElement('div');
-      var hasP=!!person;
-      half.style.cssText='flex:1;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:3px;padding:2px 3px;transition:opacity 0.1s;min-height:24px;'
-        +(hasP
-          ?'background:'+person.color+'18;border:1.5px solid '+person.color+'55;'
-          :'background:var(--s2);border:1px dashed var(--b2);');
-      if(hasP){
+      half.style.cssText='flex:1;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:3px;padding:2px 3px;transition:opacity 0.1s;'
+        +(person?'background:'+person.color+'18;border:1.5px solid '+person.color+'55;':'background:var(--s2);border:1px dashed var(--b2);');
+      if(person){
         var ppPh=getPhoto(person.id);
         var av=ppPh
           ?'<div style="width:14px;height:14px;border-radius:50%;background-image:url('+ppPh+');background-size:cover;flex-shrink:0;border:1px solid '+person.color+'"></div>'
@@ -1100,28 +1145,27 @@ function _renderWeekGrid(dates){
 
   // ── GEBURTSTAG ROW ──
   var brow=document.createElement('div');
-  brow.style.cssText='display:grid;gap:2px;margin-bottom:4px;grid-template-columns:'+cols+';padding:0 2px';
+  brow.style.cssText='display:grid;gap:2px;margin-bottom:4px;grid-template-columns:'+cols+';padding:0 2px;flex-shrink:0';
   var blbl=document.createElement('div');blbl.style.cssText='display:flex;align-items:center;justify-content:center;font-size:14px';blbl.textContent='🎂';brow.appendChild(blbl);
   dates.forEach(function(date){
     var isT=date===td;var bdays=bdayMap[date];
     var cell=document.createElement('div');
-    cell.style.cssText='border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2px;min-height:22px;'
+    cell.style.cssText='border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2px;height:'+bdayCellH+'px;'
       +(bdays?'background:rgba(240,160,80,0.15);border:1px solid rgba(240,160,80,0.4);'+(isT?'box-shadow:0 0 0 2px var(--ac);':''):'opacity:0.08;border:1px solid transparent;');
     if(bdays){
-      var b=bdays[0];var bYear=new Date(b.date+'T12:00:00').getFullYear();var age=new Date(date+'T12:00:00').getFullYear()-bYear;
+      var b=bdays[0];var age=new Date(date+'T12:00:00').getFullYear()-new Date(b.date+'T12:00:00').getFullYear();
       cell.innerHTML='<span style="font-size:9px">🎂</span><span style="font-size:5px;color:var(--or);font-weight:600;text-align:center;line-height:1.2">'+b.name.split(' ')[0]+' '+age+'</span>';
     }
     brow.appendChild(cell);
   });
   grid.appendChild(brow);
 
-  // Legende – nur eine, kompakt
+  // Legende
   var leg=document.createElement('div');
-  leg.style.cssText='padding:6px 2px 0;';
+  leg.style.cssText='padding:4px 2px;flex-shrink:0;';
   leg.innerHTML='<span style="font-size:10px;color:var(--t3)">🏢 Büro · 🏠 HO · ✈️ Dienstreise · 🌴 Urlaub · 📌 Termin</span>';
   grid.appendChild(leg);
 }
-
 // EMMA SCREEN
 function renderEmmaScreen(){
   if(!S.members||!S.members.length){document.getElementById('emma-week').innerHTML='<div class="empty">Keine Mitglieder</div>';return;}
@@ -1552,6 +1596,90 @@ async function loadAppts(dates){
   }catch(e){console.log('loadAppts error:',e);}
 }
 
+function openNewTerminModal(){
+  // Datum: heute als Default
+  document.getElementById('nt-date').value=today();
+  document.getElementById('nt-time-from').value='';
+  document.getElementById('nt-time-to').value='';
+  document.getElementById('nt-desc').value='';
+  // Teilnehmer-Selector: eigene Person vorausgewählt
+  var cont=document.getElementById('nt-members');cont.innerHTML='';
+  S.members.forEach(function(m){
+    var btn=document.createElement('button');
+    var isSel=m.id===S.me.id;
+    btn.dataset.mid=m.id;btn.dataset.sel=isSel?'1':'0';
+    btn.style.cssText='padding:6px 12px;border-radius:50px;font-size:13px;font-weight:600;cursor:pointer;border:2px solid;font-family:var(--fb);transition:all 0.15s;'
+      +(isSel?'background:'+m.color+'22;color:'+m.color+';border-color:'+m.color:'background:transparent;color:var(--t3);border-color:var(--b2)');
+    var ph=getPhoto(m.id);
+    btn.innerHTML=(ph?'<img src="'+ph+'" style="width:16px;height:16px;border-radius:50%;margin-right:4px;vertical-align:middle">':'')+m.name;
+    btn.onclick=function(){
+      btn.dataset.sel=btn.dataset.sel==='1'?'0':'1';
+      btn.style.cssText='padding:6px 12px;border-radius:50px;font-size:13px;font-weight:600;cursor:pointer;border:2px solid;font-family:var(--fb);transition:all 0.15s;'
+        +(btn.dataset.sel==='1'?'background:'+m.color+'22;color:'+m.color+';border-color:'+m.color:'background:transparent;color:var(--t3);border-color:var(--b2)');
+    };
+    cont.appendChild(btn);
+  });
+  openM('m-new-termin');
+}
+
+async function saveNewTermin(){
+  var date=document.getElementById('nt-date').value;
+  var timeFrom=document.getElementById('nt-time-from').value;
+  var timeTo=document.getElementById('nt-time-to').value;
+  var desc=document.getElementById('nt-desc').value.trim();
+  if(!date){toast('⚠️','Datum fehlt','Bitte ein Datum wählen.');return;}
+  if(!desc){toast('⚠️','Beschreibung fehlt','Bitte Termin beschreiben.');return;}
+
+  var selMids=[];
+  document.querySelectorAll('#nt-members button').forEach(function(btn){
+    if(btn.dataset.sel==='1')selMids.push(btn.dataset.mid);
+  });
+  if(!selMids.length){toast('⚠️','Niemand ausgewählt','Bitte mindestens eine Person wählen.');return;}
+
+  var isShared=selMids.length>1;
+  var apptStatus=isShared?'pending':'confirmed';
+
+  try{
+    var payload={
+      member_id:selMids[0],
+      household_id:S.hh.id,
+      date:date,
+      time:timeFrom||'00:00',
+      time_from:timeFrom||'00:00',
+      time_to:timeTo||null,
+      description:desc,
+      member_ids:selMids,
+      confirmed_by:[S.me.id],
+      status:apptStatus
+    };
+    var res=await api('appointments',{method:'POST',body:JSON.stringify(payload)});
+    var item=await res.json();item=Array.isArray(item)?item[0]:item;
+
+    // Add to local cache for all members
+    selMids.forEach(function(mid){
+      var key=mid+'_'+date;
+      if(!apptData[key])apptData[key]=[];
+      apptData[key].push(item);
+    });
+
+    // Set status for solo appointments
+    if(!isShared&&!getSt(selMids[0],date)){
+      await upsertStatus(selMids[0],date,'appt',null);
+      S.statuses[selMids[0]+'_'+date]={member_id:selMids[0],date:date,status:'appt'};
+    }
+
+    closeM('m-new-termin');
+    renderHome();renderWeek();renderTermineScreen();
+
+    if(isShared){
+      toast('📌','Termin vorgeschlagen','Wartet auf Bestätigung');
+    } else {
+      var tl=timeFrom?(timeFrom+(timeTo?' – '+timeTo:''))+' Uhr – ':'';
+      toast('📌','Termin gespeichert',tl+desc);
+    }
+  }catch(e){toast('❌','Fehler','Bitte nochmal versuchen.');console.error(e);}
+}
+
 function openApptModal(mid,date){
   apptCtx={mid:mid,date:date,editId:null};
   var m=byId(mid);
@@ -1839,6 +1967,7 @@ function go(name){
   var ni=document.getElementById('ni-'+name);if(ni)ni.classList.add('on');
   document.getElementById('fab-vac').style.display=(name==='vacation')?'flex':'none';
   document.getElementById('fab-bday').style.display=(name==='birthdays')?'flex':'none';
+  document.getElementById('fab-termine').style.display=(name==='termine')?'flex':'none';
   if(name==='home')renderHome();
   if(name==='termine'){var allD=get4Weeks();var wd=getWeek(0);var nwd=getWeek(1);loadAppts(allD.concat(wd).concat(nwd)).then(renderTermineScreen);}
   if(name==='week'){
