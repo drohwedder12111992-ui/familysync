@@ -629,7 +629,19 @@ function getKW(date){var d=new Date(date);d.setHours(0,0,0,0);d.setDate(d.getDat
 function nextBday(dateStr){var d=new Date(dateStr+'T12:00:00');var now=new Date();var next=new Date(now.getFullYear(),d.getMonth(),d.getDate());if(next<now)next.setFullYear(now.getFullYear()+1);return next;}
 function getPhoto(mid){if(S.me&&S.me.id===mid&&S.me.photo)return S.me.photo;return localStorage.getItem('fs_photo_'+mid)||null;}
 
-// INIT
+// Upsert status: erst PATCH versuchen, bei 404 POST
+async function upsertStatus(mid, date, status, note){
+  var body=JSON.stringify({status:status,note:note||null,updated_at:new Date().toISOString()});
+  // Versuche erst PATCH (update existing)
+  var res=await api('daily_statuses?member_id=eq.'+mid+'&date=eq.'+date,{method:'PATCH',headers:{'Prefer':'return=representation'},body:body});
+  if(res.status===404||res.status===0){
+    // Kein Eintrag vorhanden – neu anlegen
+    var body2=JSON.stringify({member_id:mid,date:date,status:status,note:note||null,updated_at:new Date().toISOString()});
+    res=await api('daily_statuses',{method:'POST',headers:{'Prefer':'return=representation'},body:body2});
+  }
+  return res;
+}
+
 async function init(){
   initTheme();
   buildColorPickers();
@@ -737,7 +749,7 @@ function showApp(){
       // Activity log
       var aRes=await api('activity_log?household_id=eq.'+S.hh.id+'&select=*&order=created_at.desc&limit=20');
       S.acts=await aRes.json();
-      renderActs();checkNewAct();
+      renderActs();
 
       if(changed||dogChanged){
         renderHome();
@@ -1119,9 +1131,9 @@ async function selStatus(status,emoji,label){
   var key=mid+'_'+date;
   _isSaving=true;
   try{
-    await api('daily_statuses',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=representation'},body:JSON.stringify({member_id:mid,date:date,status:status,updated_at:new Date().toISOString()})});
+    await upsertStatus(mid,date,status,null);
     S.statuses[key]={member_id:mid,date:date,status:status};
-    _protected[key]=Date.now()+10000; // 10 Sek. Schutz vor Poll-Überschreibung
+    _protected[key]=Date.now()+10000;
     await logAct('<strong>'+(m?m.name:'?')+'</strong> ist '+fmtLong(date)+' <strong>'+emoji+' '+label+'</strong>');
     toast('✅','Gespeichert',emoji+' '+label+' für '+fmtShort(date));
     renderHome();
@@ -1158,7 +1170,7 @@ async function saveTravel(){
   try{
     for(var i=0;i<dates.length;i++){
       var date=dates[i];var key=mid+'_'+date;
-      await api('daily_statuses',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=representation'},body:JSON.stringify({member_id:mid,date:date,status:'travel',note:note||null,updated_at:new Date().toISOString()})});
+      await upsertStatus(mid,date,'travel',note||null);
       S.statuses[key]={member_id:mid,date:date,status:'travel',note:note};
       _protected[key]=Date.now()+10000;
     }
@@ -1191,7 +1203,7 @@ async function saveEmma(date,slot,mid){
   var newEvening=slot==='evening'?actualMid:(ex.evening_member_id||null);
   try{
     if(!newMorning&&!newEvening){await api('dog_transfers?household_id=eq.'+S.me.household_id+'&date=eq.'+date,{method:'DELETE'});delete S.dogs[date];}
-    else{var payload={household_id:S.me.household_id,date:date,morning_member_id:newMorning,evening_member_id:newEvening,updated_at:new Date().toISOString()};await api('dog_transfers',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=representation'},body:JSON.stringify(payload)});S.dogs[date]=payload;}
+    else{var payload={household_id:S.me.household_id,date:date,morning_member_id:newMorning,evening_member_id:newEvening,updated_at:new Date().toISOString()};var dtRes=await api('dog_transfers?household_id=eq.'+S.me.household_id+'&date=eq.'+date,{method:'PATCH',headers:{'Prefer':'return=representation'},body:JSON.stringify(payload)});if(dtRes.status===404||dtRes.status===0){await api('dog_transfers',{method:'POST',headers:{'Prefer':'return=representation'},body:JSON.stringify(payload)});}S.dogs[date]=payload;}
     if(actualMid){await logAct('<strong>'+(m?m.name:'?')+'</strong> '+(slot==='morning'?'bringt':'holt')+' Emma am '+fmtLong(date)+' 🐕');toast('🐕','Eingetragen',(m?m.name:'?')+' – '+(slot==='morning'?'Hinweg':'Rückweg'));}else{toast('✕','Gelöscht','Emma-Transfer für '+fmtShort(date)+' entfernt.');}
     renderHome();if(document.getElementById('screen-week').classList.contains('on'))renderWeek();
   }catch(e){toast('❌','Fehler','Bitte nochmal versuchen.');console.error(e);}
@@ -1259,7 +1271,7 @@ async function confirmVac(id){
   try{await api('vacation_proposals?id=eq.'+id,{method:'PATCH',body:JSON.stringify({confirmed_by_ids:ids,status:allConf?'confirmed':'proposal',updated_at:new Date().toISOString()})});if(allConf){toast('🎉','Urlaub gebucht!',v.name+' ist bestätigt!');await applyVacToCal(v.start_date,v.end_date,targetMids,v.name);}else{toast('✅','Bestätigt!','Warte noch auf Bestätigung.');}await loadVacs();renderVacs();}catch(e){console.error(e);}
 }
 async function declineVac(id){if(!confirm('Vorschlag ablehnen?'))return;try{await api('vacation_proposals?id=eq.'+id,{method:'PATCH',body:JSON.stringify({status:'declined',updated_at:new Date().toISOString()})});toast('❌','Abgelehnt','');await loadVacs();renderVacs();}catch(e){console.error(e);}}
-async function applyVacToCal(start,end,memberIds,vacName){var dates=[],cur=new Date(start+'T12:00:00'),ed=new Date(end+'T12:00:00');while(cur<=end){dates.push(cur.toISOString().split('T')[0]);cur.setDate(cur.getDate()+1);}var mids=memberIds||S.members.map(function(m){return m.id;});for(var i=0;i<mids.length;i++){var mid=mids[i];for(var j=0;j<dates.length;j++){var date=dates[j];await api('daily_statuses',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=representation'},body:JSON.stringify({member_id:mid,date:date,status:'vacation',updated_at:new Date().toISOString()})});S.statuses[mid+'_'+date]={member_id:mid,date:date,status:'vacation'};}}renderHome();renderWeek();}
+async function applyVacToCal(start,end,memberIds,vacName){var dates=[],cur=new Date(start+'T12:00:00'),ed=new Date(end+'T12:00:00');while(cur<=end){dates.push(cur.toISOString().split('T')[0]);cur.setDate(cur.getDate()+1);}var mids=memberIds||S.members.map(function(m){return m.id;});for(var i=0;i<mids.length;i++){var mid=mids[i];for(var j=0;j<dates.length;j++){var date=dates[j];await upsertStatus(mid,date,'vacation',null);S.statuses[mid+'_'+date]={member_id:mid,date:date,status:'vacation'};}}renderHome();renderWeek();}
 
 // BIRTHDAYS
 async function loadBdays(){if(!S.hh){bdayData=[];return;}try{var res=await api('birthdays?household_id=eq.'+S.hh.id+'&select=*&order=date.asc');var data=await res.json();bdayData=Array.isArray(data)?data:[];}catch(e){bdayData=[];}}
@@ -1483,7 +1495,7 @@ async function saveAppt(){
   if(apptCtx.editId){
     try{await api('appointments?id=eq.'+apptCtx.editId,{method:'PATCH',body:JSON.stringify({time:timeFrom||'00:00',time_from:timeFrom||'00:00',time_to:timeTo||null,description:desc})});var key=mid+'_'+date;apptData[key]=(apptData[key]||[]).map(function(a){return a.id===apptCtx.editId?Object.assign({},a,{time:timeFrom||'00:00',time_from:timeFrom||'00:00',time_to:timeTo||null,description:desc}):a;});apptCtx.editId=null;document.getElementById('btn-save-appt').textContent='+ Hinzufügen';renderApptList();renderWeek();renderHome();toast('✅','Termin aktualisiert',desc);}catch(e){toast('❌','Fehler','Bitte nochmal versuchen.');console.error(e);}return;
   }
-  try{var res=await api('appointments',{method:'POST',body:JSON.stringify({member_id:mid,date:date,time:timeFrom||'00:00',time_from:timeFrom||'00:00',time_to:timeTo||null,description:desc,household_id:S.hh.id})});var item=await res.json();item=Array.isArray(item)?item[0]:item;var key=mid+'_'+date;if(!apptData[key])apptData[key]=[];apptData[key].push(item);apptData[key].sort(function(a,b){return a.time.localeCompare(b.time);});document.getElementById('appt-time').value='';if(document.getElementById('appt-time-to'))document.getElementById('appt-time-to').value='';document.getElementById('appt-desc').value='';renderApptList();if(!getSt(mid,date)){await api('daily_statuses',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=representation'},body:JSON.stringify({member_id:mid,date:date,status:'appt',updated_at:new Date().toISOString()})});S.statuses[mid+'_'+date]={member_id:mid,date:date,status:'appt'};}renderWeek();renderHome();var timeLabel=timeFrom?(timeFrom+(timeTo?' – '+timeTo:''))+' Uhr':'';toast('📌','Termin gespeichert',timeLabel?timeLabel+' – '+desc:desc);}catch(e){toast('❌','Fehler','Bitte appointments-Tabelle in Supabase anlegen.');console.error(e);}
+  try{var res=await api('appointments',{method:'POST',body:JSON.stringify({member_id:mid,date:date,time:timeFrom||'00:00',time_from:timeFrom||'00:00',time_to:timeTo||null,description:desc,household_id:S.hh.id})});var item=await res.json();item=Array.isArray(item)?item[0]:item;var key=mid+'_'+date;if(!apptData[key])apptData[key]=[];apptData[key].push(item);apptData[key].sort(function(a,b){return a.time.localeCompare(b.time);});document.getElementById('appt-time').value='';if(document.getElementById('appt-time-to'))document.getElementById('appt-time-to').value='';document.getElementById('appt-desc').value='';renderApptList();if(!getSt(mid,date)){await upsertStatus(mid,date,'appt',null);S.statuses[mid+'_'+date]={member_id:mid,date:date,status:'appt'};}renderWeek();renderHome();var timeLabel=timeFrom?(timeFrom+(timeTo?' – '+timeTo:''))+' Uhr':'';toast('📌','Termin gespeichert',timeLabel?timeLabel+' – '+desc:desc);}catch(e){toast('❌','Fehler','Bitte appointments-Tabelle in Supabase anlegen.');console.error(e);}
 }
 
 async function deleteAppt(id){
@@ -1510,7 +1522,27 @@ async function deleteApptById(apptId,mid,date){
 
 async function syncVacationsToStatuses(){
   var confirmed=(S.vacs||[]).filter(function(v){return v.status==='confirmed';});
-  for(var i=0;i<confirmed.length;i++){var v=confirmed[i];var mids=v.member_ids&&v.member_ids.length?v.member_ids:(v.confirmed_by_ids&&v.confirmed_by_ids.length?v.confirmed_by_ids:[]);if(!mids.length)continue;var cur=new Date(v.start_date+'T12:00:00'),end=new Date(v.end_date+'T12:00:00');while(cur<=end){var date=cur.toISOString().split('T')[0];for(var j=0;j<mids.length;j++){var mid=mids[j];var key2=mid+'_'+date;var existing=S.statuses[key2];var isProtected=_protected[key2]&&_protected[key2]>Date.now();if(!isProtected&&(!existing||existing.status!=='vacation')){try{await api('daily_statuses',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=representation','Content-Type':'application/json'},body:JSON.stringify({member_id:mid,date:date,status:'vacation',note:v.name||null,updated_at:new Date().toISOString()})});S.statuses[key2]={member_id:mid,date:date,status:'vacation',note:v.name||null};}catch(e){try{await api('daily_statuses?member_id=eq.'+mid+'&date=eq.'+date,{method:'PATCH',body:JSON.stringify({status:'vacation',note:v.name||null,updated_at:new Date().toISOString()})});S.statuses[key2]={member_id:mid,date:date,status:'vacation',note:v.name||null};}catch(e2){}}}}cur.setDate(cur.getDate()+1);}}
+  for(var i=0;i<confirmed.length;i++){
+    var v=confirmed[i];
+    var mids=v.member_ids&&v.member_ids.length?v.member_ids:(v.confirmed_by_ids&&v.confirmed_by_ids.length?v.confirmed_by_ids:[]);
+    if(!mids.length)continue;
+    var cur=new Date(v.start_date+'T12:00:00'),end=new Date(v.end_date+'T12:00:00');
+    while(cur<=end){
+      var date=cur.toISOString().split('T')[0];
+      for(var j=0;j<mids.length;j++){
+        var mid=mids[j];var key2=mid+'_'+date;
+        var existing=S.statuses[key2];
+        var isProtected=_protected[key2]&&_protected[key2]>Date.now();
+        if(!isProtected&&(!existing||existing.status!=='vacation')){
+          try{
+            await upsertStatus(mid,date,'vacation',v.name||null);
+            S.statuses[key2]={member_id:mid,date:date,status:'vacation',note:v.name||null};
+          }catch(e){console.error('syncVac error:',e);}
+        }
+      }
+      cur.setDate(cur.getDate()+1);
+    }
+  }
 }
 
 function getEmmaPhoto(){
@@ -1747,7 +1779,7 @@ async function selStatusDirect(mid,date,status,emoji,label){
   var key=mid+'_'+date;
   _isSaving=true;
   try{
-    await api('daily_statuses',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=representation'},body:JSON.stringify({member_id:mid,date:date,status:status,updated_at:new Date().toISOString()})});
+    await upsertStatus(mid,date,status,null);
     S.statuses[key]={member_id:mid,date:date,status:status};
     _protected[key]=Date.now()+10000;
     await logAct('<strong>'+(m?m.name:'?')+'</strong> ist '+fmtLong(date)+' <strong>'+emoji+' '+label+'</strong>');
