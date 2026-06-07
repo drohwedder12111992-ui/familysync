@@ -1053,7 +1053,7 @@ function _renderWeekGrid(dates){
       var hasAppt=appts.length>0;
 
       var cell=document.createElement('div');
-      cell.style.cssText='border-radius:8px;cursor:pointer;border:1px solid;padding:4px 2px;height:'+cellH+'px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;transition:all 0.1s;overflow:hidden;'
+      cell.style.cssText='border-radius:8px;cursor:pointer;border:1px solid;padding:4px 2px;height:'+cellH+'px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:2px;transition:all 0.1s;overflow:hidden;'
         +(isT?'border-color:var(--ac);box-shadow:0 0 0 2px var(--ac);':'')
         +(isPast&&!isT?'opacity:0.38;':'')
         +(isW?'opacity:'+(isPast?'0.22':'0.42')+';background:var(--s1);border-color:var(--b1);'
@@ -1088,7 +1088,8 @@ function _renderWeekGrid(dates){
         if(appts.length>2)apptHtml+='<div style="font-size:'+fs2+'px;color:var(--t3)">+'+( appts.length-2)+'</div>';
       }
 
-      cell.innerHTML=iconHtml+vacHtml+apptHtml;
+      var centerHtml=vacHtml||apptHtml?'<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;gap:1px">'+vacHtml+apptHtml+'</div>':'';
+      cell.innerHTML=iconHtml+centerHtml;
       cell.addEventListener('click',(function(mid,dt){return function(){
         if((apptData[(mid+'_'+dt)]||[]).length)openApptModal(mid,dt);
         else openPicker(mid,dt);
@@ -1399,7 +1400,9 @@ function renderTermineScreen(){
   var todayDates=[td];
   var thisWeekDates=getWeek(0).filter(function(d){return d!==td;});
   var nextWeekDates=getWeek(1);
-  var monthDates=get4Weeks().filter(function(d){return d>addDays(td,13);});
+  var monthEnd=addDays(td,60);
+  var monthDates=[];
+  for(var mwi=2;mwi<9;mwi++){getWeek(mwi).forEach(function(d){if(d>addDays(td,13)&&d<=monthEnd&&monthDates.indexOf(d)===-1)monthDates.push(d);});}
 
   // ── AUSSTEHENDE TERMINE (pending, needs my confirmation) ──
   var pendingSec=document.getElementById('termine-pending-sec');
@@ -1972,7 +1975,7 @@ function go(name){
   document.getElementById('fab-bday').style.display=(name==='birthdays')?'flex':'none';
   document.getElementById('fab-termine').style.display=(name==='termine')?'flex':'none';
   if(name==='home')renderHome();
-  if(name==='termine'){var wd0=getWeek(0);var wd1=getWeek(1);var wd2=getWeek(2);var wd3=getWeek(3);var allTermDates=wd0.concat(wd1).concat(wd2).concat(wd3);loadAppts(allTermDates).then(renderTermineScreen);}
+  if(name==='termine'){var allTermDates=[];for(var wi=0;wi<8;wi++)allTermDates=allTermDates.concat(getWeek(wi));loadAppts(allTermDates).then(renderTermineScreen);}
   if(name==='week'){
     renderWeek();loadAll().then(function(){loadBdays().then(function(){syncVacationsToStatuses().then(renderWeek);});});
     if(!document.getElementById('wk-grid').dataset.swipe){document.getElementById('wk-grid').dataset.swipe='1';initSwipe(document.getElementById('wk-grid'),
