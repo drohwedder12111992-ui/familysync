@@ -570,7 +570,9 @@ function api(p,o){o=o||{};return fetch(SB+'/rest/v1/'+p,{headers:Object.assign({
 // STATE
 var S={me:null,hh:null,members:[],statuses:{},dogs:{},acts:[],vacs:[],wkOff:0};
 var bdayData=[];
-var _isSaving=false; // Race condition guard
+var _isSaving=false;
+// Schutz: frisch gespeicherte Einträge für 10 Sekunden vor Poll-Überschreibung schützen
+var _protected={}; // key = "memberId_date", value = timestamp
 // FIX 9: 8 gut differenzierbare Farben
 var COLORS=['#5b8dee','#ff69b4','#ff1493','#4ecb71','#f0a050','#a594f9','#e05555','#00c8a0'];
 var col1=COLORS[0],col2=COLORS[1];
@@ -662,7 +664,21 @@ async function loadAll(){
     var ids=S.members.map(function(m){return m.id;}).join(',');
     var from=addDays(today(),-30),to=addDays(today(),400);
     var sRes=await api('daily_statuses?member_id=in.('+ids+')&date=gte.'+from+'&date=lte.'+to+'&select=*');
-    var sts=await sRes.json();S.statuses={};sts.forEach(function(s){S.statuses[s.member_id+'_'+s.date]=s;});
+    var sts=await sRes.json();
+    var now=Date.now();
+    // Neuen State bauen – aber geschützte Einträge NICHT überschreiben
+    var newStatuses={};
+    sts.forEach(function(s){newStatuses[s.member_id+'_'+s.date]=s;});
+    // Geschützte Einträge beibehalten wenn noch aktiv
+    Object.keys(_protected).forEach(function(key){
+      if(_protected[key]>now){
+        // Schutz noch aktiv – lokalen Wert behalten
+        if(S.statuses[key])newStatuses[key]=S.statuses[key];
+      } else {
+        delete _protected[key]; // Schutz abgelaufen
+      }
+    });
+    S.statuses=newStatuses;
     var dRes=await api('dog_transfers?household_id=eq.'+S.me.household_id+'&date=gte.'+from+'&date=lte.'+to+'&select=*');
     var dogs=await dRes.json();S.dogs={};dogs.forEach(function(d){S.dogs[d.date]=d;});
     var aRes=await api('activity_log?household_id=eq.'+S.me.household_id+'&select=*&order=created_at.desc&limit=20');
@@ -1059,29 +1075,33 @@ function openPicker(mid,date){pickerCtx={mid:mid,date:date};var m=byId(mid);docu
 async function selStatus(status,emoji,label){
   closeM('m-status');
   var mid=pickerCtx.mid,date=pickerCtx.date,m=byId(mid);
+  var key=mid+'_'+date;
   _isSaving=true;
   try{
     await api('daily_statuses',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=representation'},body:JSON.stringify({member_id:mid,date:date,status:status,updated_at:new Date().toISOString()})});
-    S.statuses[mid+'_'+date]={member_id:mid,date:date,status:status};
+    S.statuses[key]={member_id:mid,date:date,status:status};
+    _protected[key]=Date.now()+10000; // 10 Sek. Schutz vor Poll-Überschreibung
     await logAct('<strong>'+(m?m.name:'?')+'</strong> ist '+fmtLong(date)+' <strong>'+emoji+' '+label+'</strong>');
     toast('✅','Gespeichert',emoji+' '+label+' für '+fmtShort(date));
     renderHome();
     if(document.getElementById('screen-week').classList.contains('on'))renderWeek();
   }catch(e){toast('❌','Fehler','Bitte nochmal versuchen.');console.error(e);}
-  finally{setTimeout(function(){_isSaving=false;},3000);}
+  finally{setTimeout(function(){_isSaving=false;},5000);}
 }
 async function deleteStatus(){
   closeM('m-status');
   var mid=pickerCtx.mid,date=pickerCtx.date;
+  var key=mid+'_'+date;
   _isSaving=true;
   try{
     await api('daily_statuses?member_id=eq.'+mid+'&date=eq.'+date,{method:'DELETE',headers:{'Prefer':'return=representation'}});
-    delete S.statuses[mid+'_'+date];
+    delete S.statuses[key];
+    _protected[key]=Date.now()+10000;
     toast('✕','Gelöscht','Eintrag für '+fmtShort(date)+' entfernt.');
     renderHome();
     if(document.getElementById('screen-week').classList.contains('on'))renderWeek();
   }catch(e){toast('❌','Fehler','Bitte nochmal versuchen.');console.error(e);}
-  finally{setTimeout(function(){_isSaving=false;},3000);}
+  finally{setTimeout(function(){_isSaving=false;},5000);}
 }
 
 // TRAVEL
@@ -1091,10 +1111,22 @@ async function saveTravel(){
   if(!start||!end){toast('⚠️','Datum fehlt','Bitte Start- und Enddatum wählen.');return;}
   if(end<start){toast('⚠️','Datum-Fehler','Enddatum nach Startdatum.');return;}
   closeM('m-travel');var mid=pickerCtx.mid,m=byId(mid);
-  var dates=[],cur=new Date(start+'T12:00:00'),ed=new Date(end+'T12:00:00');while(cur<=ed){dates.push(cur.toISOString().split('T')[0]);cur.setDate(cur.getDate()+1);}
-  try{for(var i=0;i<dates.length;i++){var date=dates[i];await api('daily_statuses',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=representation'},body:JSON.stringify({member_id:mid,date:date,status:'travel',note:note||null,updated_at:new Date().toISOString()})});S.statuses[mid+'_'+date]={member_id:mid,date:date,status:'travel',note:note};}
-  var lbl=dates.length===1?fmtLong(start):fmtShort(start)+' – '+fmtShort(end);var ns=note?' ('+note+')':'';
-  await logAct('<strong>'+(m?m.name:'?')+'</strong> Dienstreise: <strong>✈️ '+lbl+ns+'</strong>');toast('✈️','Dienstreise eingetragen',lbl+ns);renderHome();if(document.getElementById('screen-week').classList.contains('on'))renderWeek();}catch(e){toast('❌','Fehler','Bitte nochmal versuchen.');console.error(e);}
+  var dates=[],cur=new Date(start+'T12:00:00'),ed=new Date(end+'T12:00:00');
+  while(cur<=ed){dates.push(cur.toISOString().split('T')[0]);cur.setDate(cur.getDate()+1);}
+  _isSaving=true;
+  try{
+    for(var i=0;i<dates.length;i++){
+      var date=dates[i];var key=mid+'_'+date;
+      await api('daily_statuses',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=representation'},body:JSON.stringify({member_id:mid,date:date,status:'travel',note:note||null,updated_at:new Date().toISOString()})});
+      S.statuses[key]={member_id:mid,date:date,status:'travel',note:note};
+      _protected[key]=Date.now()+10000;
+    }
+    var lbl=dates.length===1?fmtLong(start):fmtShort(start)+' – '+fmtShort(end);var ns=note?' ('+note+')':'';
+    await logAct('<strong>'+(m?m.name:'?')+'</strong> Dienstreise: <strong>✈️ '+lbl+ns+'</strong>');
+    toast('✈️','Dienstreise eingetragen',lbl+ns);
+    renderHome();if(document.getElementById('screen-week').classList.contains('on'))renderWeek();
+  }catch(e){toast('❌','Fehler','Bitte nochmal versuchen.');console.error(e);}
+  finally{setTimeout(function(){_isSaving=false;},5000);}
 }
 
 // EMMA PICKER
@@ -1437,7 +1469,7 @@ async function deleteApptById(apptId,mid,date){
 
 async function syncVacationsToStatuses(){
   var confirmed=(S.vacs||[]).filter(function(v){return v.status==='confirmed';});
-  for(var i=0;i<confirmed.length;i++){var v=confirmed[i];var mids=v.member_ids&&v.member_ids.length?v.member_ids:(v.confirmed_by_ids&&v.confirmed_by_ids.length?v.confirmed_by_ids:[]);if(!mids.length)continue;var cur=new Date(v.start_date+'T12:00:00'),end=new Date(v.end_date+'T12:00:00');while(cur<=end){var date=cur.toISOString().split('T')[0];for(var j=0;j<mids.length;j++){var mid=mids[j];var existing=S.statuses[mid+'_'+date];if(!existing||existing.status!=='vacation'){try{await api('daily_statuses',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=representation','Content-Type':'application/json'},body:JSON.stringify({member_id:mid,date:date,status:'vacation',note:v.name||null,updated_at:new Date().toISOString()})});S.statuses[mid+'_'+date]={member_id:mid,date:date,status:'vacation',note:v.name||null};}catch(e){try{await api('daily_statuses?member_id=eq.'+mid+'&date=eq.'+date,{method:'PATCH',body:JSON.stringify({status:'vacation',note:v.name||null,updated_at:new Date().toISOString()})});S.statuses[mid+'_'+date]={member_id:mid,date:date,status:'vacation',note:v.name||null};}catch(e2){}}}}cur.setDate(cur.getDate()+1);}}
+  for(var i=0;i<confirmed.length;i++){var v=confirmed[i];var mids=v.member_ids&&v.member_ids.length?v.member_ids:(v.confirmed_by_ids&&v.confirmed_by_ids.length?v.confirmed_by_ids:[]);if(!mids.length)continue;var cur=new Date(v.start_date+'T12:00:00'),end=new Date(v.end_date+'T12:00:00');while(cur<=end){var date=cur.toISOString().split('T')[0];for(var j=0;j<mids.length;j++){var mid=mids[j];var key2=mid+'_'+date;var existing=S.statuses[key2];var isProtected=_protected[key2]&&_protected[key2]>Date.now();if(!isProtected&&(!existing||existing.status!=='vacation')){try{await api('daily_statuses',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=representation','Content-Type':'application/json'},body:JSON.stringify({member_id:mid,date:date,status:'vacation',note:v.name||null,updated_at:new Date().toISOString()})});S.statuses[key2]={member_id:mid,date:date,status:'vacation',note:v.name||null};}catch(e){try{await api('daily_statuses?member_id=eq.'+mid+'&date=eq.'+date,{method:'PATCH',body:JSON.stringify({status:'vacation',note:v.name||null,updated_at:new Date().toISOString()})});S.statuses[key2]={member_id:mid,date:date,status:'vacation',note:v.name||null};}catch(e2){}}}}cur.setDate(cur.getDate()+1);}}
 }
 
 function getEmmaPhoto(){
@@ -1671,17 +1703,19 @@ function hideSwipeBar(){
 
 async function selStatusDirect(mid,date,status,emoji,label){
   var m=byId(mid);
+  var key=mid+'_'+date;
   _isSaving=true;
   try{
     await api('daily_statuses',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=representation'},body:JSON.stringify({member_id:mid,date:date,status:status,updated_at:new Date().toISOString()})});
-    S.statuses[mid+'_'+date]={member_id:mid,date:date,status:status};
+    S.statuses[key]={member_id:mid,date:date,status:status};
+    _protected[key]=Date.now()+10000;
     await logAct('<strong>'+(m?m.name:'?')+'</strong> ist '+fmtLong(date)+' <strong>'+emoji+' '+label+'</strong>');
     toast('✅','Gespeichert',emoji+' '+label);
     renderHome();
     if(document.getElementById('screen-week').classList.contains('on'))renderWeek();
     pushToPartner(m?m.name:'?',emoji+' '+label);
   }catch(e){toast('❌','Fehler','Bitte nochmal versuchen.');console.error(e);}
-  finally{setTimeout(function(){_isSaving=false;},3000);}
+  finally{setTimeout(function(){_isSaving=false;},5000);}
 }
 
 function initPRowSwipe(){
