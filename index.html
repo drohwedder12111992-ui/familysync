@@ -382,6 +382,7 @@ body{background:var(--bg);color:var(--t1);font-family:var(--fb);height:100dvh;ov
   <div class="screen" id="screen-termine">
     <div class="tb"><div><div class="tb-title">📌 Termine</div><div class="tb-sub">Alle Termine im Überblick</div></div></div>
     <div class="sec">
+      <div id="termine-pending-sec"></div>
       <div id="termine-today-sec"></div>
       <div id="termine-week-sec" style="margin-top:4px"></div>
       <div id="termine-next-sec" style="margin-top:4px"></div>
@@ -492,15 +493,21 @@ body{background:var(--bg);color:var(--t1);font-family:var(--fb);height:100dvh;ov
   <button class="btn" style="margin-top:0" id="btn-save-travel">Eintragen ✈️</button>
   <button class="mcancel" style="margin-top:8px" id="btn-cancel-travel">Abbrechen</button></div>
 </div>
-<!-- FIX 2: Termin-Sheet mit Labels für Zeitfelder -->
+<!-- TERMIN MODAL – mit Teilnehmer-Auswahl -->
 <div class="overlay" id="m-appt">
   <div class="modal">
     <div class="mhandle"></div>
     <div class="mtitle" id="m-appt-title">📌 Termine</div>
     <div class="msub" id="m-appt-sub">–</div>
-    <div id="appt-list" style="margin-bottom:12px;max-height:180px;overflow-y:auto;border-radius:10px;background:var(--s3);padding:2px 8px"></div>
-    <div style="background:var(--s2);border:1px solid var(--b2);border-radius:var(--rsm);padding:10px 12px;margin-bottom:10px">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--t3);margin-bottom:8px">Neuer Termin</div>
+    <div id="appt-list" style="margin-bottom:12px;max-height:200px;overflow-y:auto;border-radius:10px;background:var(--s3);padding:2px 8px"></div>
+    <div style="background:var(--s2);border:1px solid var(--b2);border-radius:var(--rsm);padding:12px;margin-bottom:10px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--t3);margin-bottom:10px">Neuer Termin</div>
+      <!-- Teilnehmer -->
+      <div style="margin-bottom:10px">
+        <div style="font-size:11px;color:var(--t3);margin-bottom:6px">Wer nimmt teil?</div>
+        <div id="appt-members" style="display:flex;gap:7px;flex-wrap:wrap"></div>
+      </div>
+      <!-- Zeit -->
       <div style="display:flex;gap:6px;align-items:flex-end;margin-bottom:8px;flex-wrap:wrap">
         <div style="display:flex;flex-direction:column;gap:3px">
           <label style="font-size:10px;color:var(--t3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Von</label>
@@ -516,7 +523,7 @@ body{background:var(--bg);color:var(--t1);font-family:var(--fb);height:100dvh;ov
           <input type="text" id="appt-desc" class="inp" placeholder="z.B. Tennis mit Henning">
         </div>
       </div>
-      <button id="btn-save-appt" style="width:100%;padding:10px;background:linear-gradient(135deg,var(--ac),#9b8df8);border:none;border-radius:50px;color:white;font-family:var(--fb);font-size:14px;font-weight:500;cursor:pointer">+ Hinzufügen</button>
+      <button id="btn-save-appt" style="width:100%;padding:11px;background:linear-gradient(135deg,var(--ac),#9b8df8);border:none;border-radius:50px;color:white;font-family:var(--fb);font-size:14px;font-weight:500;cursor:pointer">+ Hinzufügen</button>
     </div>
     <button class="mcancel" id="btn-cancel-appt">Schließen</button>
   </div>
@@ -1339,104 +1346,169 @@ function editBday(id){var b=bdayData.find(function(x){return x.id===id;});if(!b)
 async function saveBday(){var name=document.getElementById('bday-name').value.trim(),date=document.getElementById('bday-date').value,editId=document.getElementById('bday-edit-id').value;if(!name||!date){toast('⚠️','Fehlende Felder','Bitte Name und Datum eingeben.');return;}closeM('m-bday');try{if(editId){await api('birthdays?id=eq.'+editId,{method:'PATCH',body:JSON.stringify({name:name,date:date})});}else{await api('birthdays',{method:'POST',body:JSON.stringify({household_id:S.hh.id,name:name,date:date})});}await loadBdays();renderBdays();renderWeek();toast('🎂','Gespeichert',name+' eingetragen!');}catch(e){toast('❌','Fehler','Bitte zuerst die birthdays-Tabelle in Supabase anlegen.');console.error(e);}}
 async function deleteBday(){var id=document.getElementById('bday-edit-id').value;if(!id||!confirm('Geburtstag löschen?'))return;closeM('m-bday');try{await api('birthdays?id=eq.'+id,{method:'DELETE'});await loadBdays();renderBdays();renderWeek();toast('✕','Gelöscht','Geburtstag entfernt.');}catch(e){console.error(e);}}
 
-// TERMINE SCREEN – neu mit User-Gruppierung + "Nächste Woche"
 function renderTermineScreen(){
   var td=today();
   var weekEnd=addDays(td, 7 - new Date(td+'T12:00:00').getDay() || 7);
-  // Datumsbereiche
   var todayDates=[td];
   var thisWeekDates=getWeek(0).filter(function(d){return d!==td;});
   var nextWeekDates=getWeek(1);
   var monthDates=get4Weeks().filter(function(d){return d>addDays(td,13);});
 
-  function buildGroupedHtml(dates, emptyMsg){
-    // Sammle alle Termine für diese Daten, gruppiert nach Member
+  // ── AUSSTEHENDE TERMINE (pending, needs my confirmation) ──
+  var pendingSec=document.getElementById('termine-pending-sec');
+  var pendingItems=[];
+  Object.keys(apptData).forEach(function(key){
+    apptData[key].forEach(function(a){
+      if(a.status==='pending'&&a.member_ids&&a.member_ids.includes(S.me.id)&&!(a.confirmed_by||[]).includes(S.me.id)){
+        var mid=a.member_ids[0];var m=byId(mid);
+        if(m&&!pendingItems.find(function(x){return x.a.id===a.id;}))
+          pendingItems.push({m:m,a:a,date:a.date});
+      }
+    });
+  });
+  if(pendingItems.length){
+    pendingSec.innerHTML='<div class="sectitle" style="color:var(--or)">⏳ Warten auf dich</div>'+pendingItems.map(function(x){return termineCardHtml(x.m,x.a,x.date);}).join('');
+    attachTermineCardListeners(pendingSec);
+  } else {
+    pendingSec.innerHTML='';
+  }
+
+  function buildGroupedHtml(dates,emptyMsg){
     var byMember={};
-    S.members.forEach(function(m){ byMember[m.id]=[]; });
+    S.members.forEach(function(m){byMember[m.id]=[];});
+    var seen={};
     dates.forEach(function(date){
       S.members.forEach(function(m){
         var appts=(apptData[m.id+'_'+date]||[]);
-        appts.forEach(function(a){ byMember[m.id].push({m:m,a:a,date:date}); });
+        appts.forEach(function(a){
+          if(!seen[a.id]){seen[a.id]=true;byMember[m.id].push({m:m,a:a,date:date});}
+        });
       });
     });
-    var hasAny=S.members.some(function(m){ return byMember[m.id].length>0; });
-    if(!hasAny) return '<div class="empty" style="padding:8px 0">'+emptyMsg+'</div>';
-
+    var hasAny=S.members.some(function(m){return byMember[m.id].length>0;});
+    if(!hasAny)return'<div class="empty" style="padding:8px 0">'+emptyMsg+'</div>';
     var html='';
     S.members.forEach(function(m){
-      var items=byMember[m.id];
-      if(!items.length) return;
-      // User-Gruppenheader
+      var items=byMember[m.id];if(!items.length)return;
       var ph=getPhoto(m.id);
-      var avHtml=ph
-        ?'<div style="width:22px;height:22px;border-radius:50%;background-image:url('+ph+');background-size:cover;background-position:center;border:1.5px solid '+m.color+'"></div>'
-        :'<div style="width:22px;height:22px;border-radius:50%;background:'+m.color+'22;color:'+m.color+';border:1.5px solid '+m.color+';display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">'+m.name[0]+'</div>';
-      html+='<div style="display:flex;align-items:center;gap:7px;margin:10px 0 5px;padding:0 2px">'
-        +avHtml
-        +'<span style="font-size:12px;font-weight:700;color:'+m.color+'">'+m.name+'</span>'
-        +'<span style="font-size:11px;color:var(--t3)">· '+items.length+' Termin'+(items.length>1?'e':'')+'</span>'
-        +'</div>';
-      // Termine dieser Person chronologisch
-      items.sort(function(a,b){
-        var da=a.date+(a.a.time_from||'00:00');
-        var db=b.date+(b.a.time_from||'00:00');
-        return da.localeCompare(db);
-      });
-      items.forEach(function(x){ html+=termineCardHtml(x.m,x.a,x.date); });
+      var avHtml=ph?'<div style="width:22px;height:22px;border-radius:50%;background-image:url('+ph+');background-size:cover;background-position:center;border:1.5px solid '+m.color+'"></div>':'<div style="width:22px;height:22px;border-radius:50%;background:'+m.color+'22;color:'+m.color+';border:1.5px solid '+m.color+';display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">'+m.name[0]+'</div>';
+      html+='<div style="display:flex;align-items:center;gap:7px;margin:10px 0 5px;padding:0 2px">'+avHtml+'<span style="font-size:12px;font-weight:700;color:'+m.color+'">'+m.name+'</span><span style="font-size:11px;color:var(--t3)">· '+items.length+' Termin'+(items.length>1?'e':'')+'</span></div>';
+      items.sort(function(a,b){var da=a.date+(a.a.time_from||'00:00');var db=b.date+(b.a.time_from||'00:00');return da.localeCompare(db);});
+      items.forEach(function(x){html+=termineCardHtml(x.m,x.a,x.date);});
     });
     return html;
   }
 
-  // HEUTE
   var todaySec=document.getElementById('termine-today-sec');
   todaySec.innerHTML='<div class="sectitle">Heute</div>'+buildGroupedHtml(todayDates,'Keine Termine heute');
   attachTermineCardListeners(todaySec);
 
-  // DIESE WOCHE
   var weekSec=document.getElementById('termine-week-sec');
   weekSec.innerHTML='<div class="sectitle" style="margin-top:4px">Diese Woche</div>'+buildGroupedHtml(thisWeekDates,'Keine weiteren Termine diese Woche');
   attachTermineCardListeners(weekSec);
 
-  // NÄCHSTE WOCHE
   var nextSec=document.getElementById('termine-next-sec');
   nextSec.innerHTML='<div class="sectitle" style="margin-top:4px">Nächste Woche</div>'+buildGroupedHtml(nextWeekDates,'Keine Termine nächste Woche');
   attachTermineCardListeners(nextSec);
 
-  // DIESEN MONAT
   var monthSec=document.getElementById('termine-month-sec');
   monthSec.innerHTML='<div class="sectitle" style="margin-top:4px">Diesen Monat</div>'+buildGroupedHtml(monthDates,'Keine weiteren Termine diesen Monat');
   attachTermineCardListeners(monthSec);
 }
 
-// FIX 7: Returns HTML string, buttons hidden, toggled on tap
 function termineCardHtml(m,a,date){
   var ph=getPhoto(m.id);
   var avHtml=ph?'<div style="width:28px;height:28px;border-radius:50%;background-image:url('+ph+');background-size:cover;background-position:center;border:2px solid '+m.color+';flex-shrink:0"></div>':'<div style="width:28px;height:28px;border-radius:50%;background:'+m.color+'22;color:'+m.color+';border:2px solid '+m.color+';display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">'+m.name[0]+'</div>';
   var timeStr=(a.time_from&&a.time_from!=='00:00')?a.time_from.slice(0,5)+(a.time_to?' – '+a.time_to.slice(0,5):''):'';
   var d=new Date(date+'T12:00:00');var dateStr=d.toLocaleDateString('de-DE',{weekday:'short',day:'numeric',month:'short'});
-  return '<div class="tc-card" data-mid="'+m.id+'" data-date="'+date+'" data-aid="'+a.id+'" style="background:var(--s2);border:1px solid '+m.color+'44;border-radius:var(--rsm);padding:10px 12px;margin-bottom:7px;display:flex;gap:10px;align-items:center;cursor:pointer">'
+  var isShared=a.member_ids&&a.member_ids.length>1;
+  var isPending=a.status==='pending';
+  var confirmedBy=a.confirmed_by||[];
+  var iConfirmed=confirmedBy.includes(S.me.id);
+  var needsMyConfirm=isPending&&!iConfirmed&&a.member_ids&&a.member_ids.includes(S.me.id);
+
+  // Who's in this appointment
+  var memberPills='';
+  if(isShared&&a.member_ids){
+    memberPills='<div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap">';
+    a.member_ids.forEach(function(mid2){
+      var m2=byId(mid2);if(!m2)return;
+      var hasConf=confirmedBy.includes(mid2);
+      memberPills+='<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:50px;background:'+m2.color+'18;color:'+m2.color+';border:1px solid '+m2.color+(hasConf?'':';opacity:0.5;border-style:dashed')+'">'+( hasConf?'✓ ':'')+m2.name+'</span>';
+    });
+    memberPills+='</div>';
+  }
+
+  var statusBadge=isPending?'<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:50px;background:var(--or2);color:var(--or);margin-left:6px">⏳ Ausstehend</span>':'';
+
+  var confirmBtn=needsMyConfirm
+    ?'<button class="tc-confirm" data-aid="'+a.id+'" style="background:var(--gr2);border:1px solid rgba(78,203,113,0.3);border-radius:6px;color:var(--gr);font-size:11px;font-weight:600;cursor:pointer;padding:5px 10px;font-family:var(--fb)">✓ Bestätigen</button>'
+    :'';
+
+  return '<div class="tc-card" data-mid="'+m.id+'" data-date="'+date+'" data-aid="'+a.id+'" style="background:var(--s2);border:1px solid '+(isPending?'rgba(240,160,80,0.4)':m.color+'44')+';border-radius:var(--rsm);padding:10px 12px;margin-bottom:7px;cursor:pointer">'
+    +'<div style="display:flex;gap:10px;align-items:center">'
     +avHtml
-    +'<div style="flex:1"><div style="font-size:13px;font-weight:600">'+a.description+'</div>'
-    +'<div style="font-size:12px;color:var(--t3);margin-top:2px">'+dateStr+(timeStr?' · '+timeStr:'')+'</div></div>'
-    +'<div class="tc-actions" style="gap:6px">'
-    +'<button class="tc-edit" style="background:var(--s3);border:1px solid var(--b2);border-radius:6px;color:var(--t2);font-size:11px;cursor:pointer;padding:4px 8px;font-family:var(--fb)">Bearbeiten</button>'
-    +'<button class="tc-del" style="background:var(--re2);border:1px solid rgba(224,85,85,0.2);border-radius:6px;color:var(--re);font-size:11px;cursor:pointer;padding:4px 8px;font-family:var(--fb)">✕</button>'
+    +'<div style="flex:1"><div style="font-size:13px;font-weight:600;display:flex;align-items:center;flex-wrap:wrap">'+a.description+statusBadge+'</div>'
+    +'<div style="font-size:12px;color:var(--t3);margin-top:2px">'+dateStr+(timeStr?' · '+timeStr:'')+'</div>'
+    +memberPills
     +'</div>'
-    +'</div>';
+    +'<div class="tc-actions" style="gap:5px;flex-direction:column;align-items:flex-end">'
+    +confirmBtn
+    +'<div style="display:flex;gap:5px">'
+    +'<button class="tc-edit" style="background:var(--s3);border:1px solid var(--b2);border-radius:6px;color:var(--t2);font-size:11px;cursor:pointer;padding:4px 8px;font-family:var(--fb)">✏️</button>'
+    +'<button class="tc-del" style="background:var(--re2);border:1px solid rgba(224,85,85,0.2);border-radius:6px;color:var(--re);font-size:11px;cursor:pointer;padding:4px 8px;font-family:var(--fb)">✕</button>'
+    +'</div></div>'
+    +'</div></div>';
 }
 
 function attachTermineCardListeners(container){
   container.querySelectorAll('.tc-card').forEach(function(card){
     card.onclick=function(e){
-      if(e.target.classList.contains('tc-edit')||e.target.classList.contains('tc-del'))return;
-      // Toggle actions visibility
+      if(e.target.classList.contains('tc-edit')||e.target.classList.contains('tc-del')||e.target.classList.contains('tc-confirm'))return;
       card.classList.toggle('open');
     };
     var editBtn=card.querySelector('.tc-edit');
     var delBtn=card.querySelector('.tc-del');
+    var confBtn=card.querySelector('.tc-confirm');
     if(editBtn)editBtn.onclick=function(e){e.stopPropagation();openApptModalEdit(card.dataset.mid,card.dataset.date,card.dataset.aid);};
     if(delBtn)delBtn.onclick=function(e){e.stopPropagation();deleteApptById(card.dataset.aid,card.dataset.mid,card.dataset.date);};
+    if(confBtn)confBtn.onclick=function(e){e.stopPropagation();confirmAppt(card.dataset.aid,card.dataset.mid,card.dataset.date);};
   });
+}
+
+async function confirmAppt(apptId,mid,date){
+  // Find the appointment
+  var appt=null;
+  Object.values(apptData).forEach(function(arr){arr.forEach(function(a){if(a.id===apptId)appt=a;});});
+  if(!appt)return;
+
+  var newConfirmed=(appt.confirmed_by||[]).concat([S.me.id]);
+  var allConfirmed=(appt.member_ids||[]).every(function(m){return newConfirmed.includes(m);});
+  var newStatus=allConfirmed?'confirmed':'pending';
+
+  try{
+    await api('appointments?id=eq.'+apptId,{method:'PATCH',body:JSON.stringify({confirmed_by:newConfirmed,status:newStatus})});
+    // Update local cache
+    Object.keys(apptData).forEach(function(key){
+      apptData[key]=apptData[key].map(function(a){
+        return a.id===apptId?Object.assign({},a,{confirmed_by:newConfirmed,status:newStatus}):a;
+      });
+    });
+
+    if(allConfirmed){
+      // Set status for all members
+      var m2s=appt.member_ids||[];
+      for(var i=0;i<m2s.length;i++){
+        await upsertStatus(m2s[i],date,'appt',null);
+        S.statuses[m2s[i]+'_'+date]={member_id:m2s[i],date:date,status:'appt'};
+      }
+      toast('✅','Termin bestätigt!',appt.description+' – alle haben zugestimmt');
+    } else {
+      toast('✓','Bestätigt','Warte noch auf die anderen.');
+    }
+    renderHome();renderWeek();
+    if(document.getElementById('screen-termine').classList.contains('on'))renderTermineScreen();
+  }catch(e){toast('❌','Fehler','Bitte nochmal versuchen.');console.error(e);}
 }
 
 // BUG 3 FIX: renderHeuteTermine – Click-Handler korrekt nach innerHTML setzen
@@ -1459,20 +1531,59 @@ async function loadAppts(dates){
   if(!S.members||!S.hh)return;
   var ids=S.members.map(function(m){return m.id;}).join(',');
   var from=dates[0],to=dates[dates.length-1];
-  try{var res=await api('appointments?member_id=in.('+ids+')&date=gte.'+from+'&date=lte.'+to+'&select=*&order=time.asc');var data=await res.json();apptData={};if(Array.isArray(data)){data.forEach(function(a){var key=a.member_id+'_'+a.date;if(!apptData[key])apptData[key]=[];apptData[key].push(a);});}}catch(e){console.log('appointments table not yet created');}
+  try{
+    // Load all appointments for household (including shared/pending)
+    var res=await api('appointments?household_id=eq.'+S.hh.id+'&date=gte.'+from+'&date=lte.'+to+'&select=*&order=time_from.asc');
+    var data=await res.json();
+    apptData={};
+    if(Array.isArray(data)){
+      data.forEach(function(a){
+        // Add to all participating members' slots
+        var mids=a.member_ids&&a.member_ids.length?a.member_ids:[a.member_id];
+        mids.forEach(function(mid){
+          var key=mid+'_'+a.date;
+          if(!apptData[key])apptData[key]=[];
+          // Avoid duplicates
+          if(!apptData[key].find(function(x){return x.id===a.id;}))
+            apptData[key].push(a);
+        });
+      });
+    }
+  }catch(e){console.log('loadAppts error:',e);}
 }
 
 function openApptModal(mid,date){
-  apptCtx={mid:mid,date:date};var m=byId(mid);
-  document.getElementById('m-appt-title').textContent='📌 Termine – '+(m?m.name:'–');
+  apptCtx={mid:mid,date:date,editId:null};
+  var m=byId(mid);
+  document.getElementById('m-appt-title').textContent='📌 Termine';
   document.getElementById('m-appt-sub').textContent=fmtLong(date);
   document.getElementById('appt-time').value='';
-  if(document.getElementById('appt-time-to'))document.getElementById('appt-time-to').value='';
+  document.getElementById('appt-time-to').value='';
   document.getElementById('appt-desc').value='';
   document.getElementById('btn-save-appt').textContent='+ Hinzufügen';
-  apptCtx.editId=null;
+  // Build member selector – default: current person selected
+  buildApptMemberSelector(mid);
   renderApptList();
   document.getElementById('m-appt').classList.add('on');
+}
+
+function buildApptMemberSelector(defaultMid){
+  var cont=document.getElementById('appt-members');cont.innerHTML='';
+  S.members.forEach(function(m){
+    var btn=document.createElement('button');
+    var isSel=m.id===defaultMid;
+    btn.dataset.mid=m.id;btn.dataset.sel=isSel?'1':'0';
+    btn.style.cssText='padding:6px 12px;border-radius:50px;font-size:13px;font-weight:600;cursor:pointer;border:2px solid;font-family:var(--fb);transition:all 0.15s;'
+      +(isSel?'background:'+m.color+'22;color:'+m.color+';border-color:'+m.color:'background:transparent;color:var(--t3);border-color:var(--b2)');
+    var ph=getPhoto(m.id);
+    btn.innerHTML=(ph?'<img src="'+ph+'" style="width:16px;height:16px;border-radius:50%;margin-right:4px;vertical-align:middle">':'')+m.name;
+    btn.onclick=function(){
+      btn.dataset.sel=btn.dataset.sel==='1'?'0':'1';
+      if(btn.dataset.sel==='1'){btn.style.cssText='padding:6px 12px;border-radius:50px;font-size:13px;font-weight:600;cursor:pointer;border:2px solid;font-family:var(--fb);transition:all 0.15s;background:'+m.color+'22;color:'+m.color+';border-color:'+m.color;}
+      else{btn.style.cssText='padding:6px 12px;border-radius:50px;font-size:13px;font-weight:600;cursor:pointer;border:2px solid;font-family:var(--fb);transition:all 0.15s;background:transparent;color:var(--t3);border-color:var(--b2)';}
+    };
+    cont.appendChild(btn);
+  });
 }
 
 async function openApptModalEdit(mid,date,apptId){
@@ -1518,10 +1629,77 @@ async function saveAppt(){
   var desc=document.getElementById('appt-desc').value.trim();
   if(!desc){toast('⚠️','Beschreibung fehlt','Bitte Termin beschreiben.');return;}
   var mid=apptCtx.mid,date=apptCtx.date;
+
+  // Edit existing
   if(apptCtx.editId){
-    try{await api('appointments?id=eq.'+apptCtx.editId,{method:'PATCH',body:JSON.stringify({time:timeFrom||'00:00',time_from:timeFrom||'00:00',time_to:timeTo||null,description:desc})});var key=mid+'_'+date;apptData[key]=(apptData[key]||[]).map(function(a){return a.id===apptCtx.editId?Object.assign({},a,{time:timeFrom||'00:00',time_from:timeFrom||'00:00',time_to:timeTo||null,description:desc}):a;});apptCtx.editId=null;document.getElementById('btn-save-appt').textContent='+ Hinzufügen';renderApptList();renderWeek();renderHome();toast('✅','Termin aktualisiert',desc);}catch(e){toast('❌','Fehler','Bitte nochmal versuchen.');console.error(e);}return;
+    try{
+      await api('appointments?id=eq.'+apptCtx.editId,{method:'PATCH',body:JSON.stringify({time:timeFrom||'00:00',time_from:timeFrom||'00:00',time_to:timeTo||null,description:desc})});
+      // Update local cache for all members
+      Object.keys(apptData).forEach(function(key){
+        apptData[key]=apptData[key].map(function(a){return a.id===apptCtx.editId?Object.assign({},a,{time_from:timeFrom||'00:00',time_to:timeTo||null,description:desc}):a;});
+      });
+      apptCtx.editId=null;
+      document.getElementById('btn-save-appt').textContent='+ Hinzufügen';
+      renderApptList();renderWeek();renderHome();
+      toast('✅','Termin aktualisiert',desc);
+    }catch(e){toast('❌','Fehler','Bitte nochmal versuchen.');console.error(e);}
+    return;
   }
-  try{var res=await api('appointments',{method:'POST',body:JSON.stringify({member_id:mid,date:date,time:timeFrom||'00:00',time_from:timeFrom||'00:00',time_to:timeTo||null,description:desc,household_id:S.hh.id})});var item=await res.json();item=Array.isArray(item)?item[0]:item;var key=mid+'_'+date;if(!apptData[key])apptData[key]=[];apptData[key].push(item);apptData[key].sort(function(a,b){return a.time.localeCompare(b.time);});document.getElementById('appt-time').value='';if(document.getElementById('appt-time-to'))document.getElementById('appt-time-to').value='';document.getElementById('appt-desc').value='';renderApptList();if(!getSt(mid,date)){await upsertStatus(mid,date,'appt',null);S.statuses[mid+'_'+date]={member_id:mid,date:date,status:'appt'};}renderWeek();renderHome();var timeLabel=timeFrom?(timeFrom+(timeTo?' – '+timeTo:''))+' Uhr':'';toast('📌','Termin gespeichert',timeLabel?timeLabel+' – '+desc:desc);}catch(e){toast('❌','Fehler','Bitte appointments-Tabelle in Supabase anlegen.');console.error(e);}
+
+  // Get selected members
+  var selMids=[];
+  document.querySelectorAll('#appt-members button').forEach(function(btn){
+    if(btn.dataset.sel==='1')selMids.push(btn.dataset.mid);
+  });
+  if(!selMids.length){toast('⚠️','Niemand ausgewählt','Bitte mindestens eine Person wählen.');return;}
+
+  var isShared=selMids.length>1;
+  var apptStatus=isShared?'pending':'confirmed';
+  var confirmedBy=isShared?[S.me.id]:[selMids[0]];
+
+  try{
+    var payload={
+      member_id:selMids[0], // primary member
+      household_id:S.hh.id,
+      date:date,
+      time:timeFrom||'00:00',
+      time_from:timeFrom||'00:00',
+      time_to:timeTo||null,
+      description:desc,
+      member_ids:selMids,
+      confirmed_by:confirmedBy,
+      status:apptStatus
+    };
+    var res=await api('appointments',{method:'POST',body:JSON.stringify(payload)});
+    var item=await res.json();item=Array.isArray(item)?item[0]:item;
+
+    // Add to local cache for all selected members
+    selMids.forEach(function(m2){
+      var key=m2+'_'+date;
+      if(!apptData[key])apptData[key]=[];
+      apptData[key].push(item);
+    });
+
+    // Set status for confirmed members only
+    if(!isShared){
+      if(!getSt(selMids[0],date)){
+        await upsertStatus(selMids[0],date,'appt',null);
+        S.statuses[selMids[0]+'_'+date]={member_id:selMids[0],date:date,status:'appt'};
+      }
+    }
+
+    document.getElementById('appt-time').value='';
+    document.getElementById('appt-time-to').value='';
+    document.getElementById('appt-desc').value='';
+    renderApptList();renderWeek();renderHome();
+
+    if(isShared){
+      toast('📌','Termin vorgeschlagen','Wartet auf Bestätigung von '+S.members.filter(function(m){return selMids.includes(m.id)&&m.id!==S.me.id;}).map(function(m){return m.name;}).join(', '));
+    } else {
+      var timeLabel=timeFrom?(timeFrom+(timeTo?' – '+timeTo:''))+' Uhr':'';
+      toast('📌','Termin gespeichert',timeLabel?timeLabel+' – '+desc:desc);
+    }
+  }catch(e){toast('❌','Fehler','Bitte nochmal versuchen.');console.error(e);}
 }
 
 async function deleteAppt(id){
