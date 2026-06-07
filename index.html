@@ -1140,7 +1140,7 @@ function renderEmmaScreen(){
 }
 
 // STATUS PICKER
-function openPicker(mid,date){pickerCtx={mid:mid,date:date};var m=byId(mid);document.getElementById('m-status-title').textContent=(m?m.name:'–')+' — '+fmtLong(date);document.getElementById('m-status').classList.add('on');}
+function openPicker(mid,date){pickerCtx={mid:mid,date:date};var m=byId(mid);document.getElementById('m-status-title').textContent=(m?m.name:'–')+' — '+fmtLong(date);openM('m-status');}
 async function selStatus(status,emoji,label){
   closeM('m-status');
   var mid=pickerCtx.mid,date=pickerCtx.date,m=byId(mid);
@@ -1174,7 +1174,7 @@ async function deleteStatus(){
 }
 
 // TRAVEL
-function openTravelModal(){var m=byId(pickerCtx.mid);document.getElementById('m-travel-sub').textContent='Dienstreise für '+(m?m.name:'–');document.getElementById('tr-start').value=pickerCtx.date||today();document.getElementById('tr-end').value=pickerCtx.date||today();document.getElementById('tr-note').value='';document.getElementById('m-travel').classList.add('on');}
+function openTravelModal(){var m=byId(pickerCtx.mid);document.getElementById('m-travel-sub').textContent='Dienstreise für '+(m?m.name:'–');document.getElementById('tr-start').value=pickerCtx.date||today();document.getElementById('tr-end').value=pickerCtx.date||today();document.getElementById('tr-note').value='';openM('m-travel');}
 async function saveTravel(){
   var start=document.getElementById('tr-start').value,end=document.getElementById('tr-end').value,note=document.getElementById('tr-note').value.trim();
   if(!start||!end){toast('⚠️','Datum fehlt','Bitte Start- und Enddatum wählen.');return;}
@@ -1210,7 +1210,7 @@ function openEmma(date,slot){
   btn.innerHTML=avHtml+' '+m.name+(isA?'<span style="margin-left:auto;color:var(--gr)">✓</span>':'');
   (function(mid){btn.onclick=function(){saveEmma(date,slot,mid);};})(m.id);cont.appendChild(btn);});
   var noneBtn=document.createElement('button');noneBtn.className='dobtn';noneBtn.innerHTML='<span style="width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,0.06);color:var(--t3);border:1.5px solid var(--b2);display:flex;align-items:center;justify-content:center;font-size:12px">✕</span> Nicht nötig / Löschen';noneBtn.onclick=function(){saveEmma(date,slot,'none');};cont.appendChild(noneBtn);
-  document.getElementById('m-emma').classList.add('on');
+  openM('m-emma');
 }
 
 async function saveEmma(date,slot,mid){
@@ -1282,7 +1282,7 @@ function openVacModal(){
     btn.onclick=function(){if(btn.dataset.sel==='1'){btn.dataset.sel='0';btn.style.cssText='background:transparent;color:var(--t3);border-color:var(--b2)';btn.textContent=m.name;}else{btn.dataset.sel='1';btn.style.cssText='background:'+m.color+'22;color:'+m.color+';border-color:'+m.color;btn.textContent='✓ '+m.name;}};
     mc.appendChild(btn);
   });
-  document.getElementById('m-vac').classList.add('on');
+  openM('m-vac');
 }
 async function saveVacProposal(){
   var name=document.getElementById('vac-name').value.trim(),start=document.getElementById('vac-start').value,end=document.getElementById('vac-end').value;
@@ -1341,8 +1341,8 @@ function renderBdays(){
     });
   });
 }
-function openBdayModal(){document.getElementById('bday-name').value='';document.getElementById('bday-date').value='';document.getElementById('bday-date').max=today();document.getElementById('bday-edit-id').value='';document.getElementById('m-bday-title').textContent='🎂 Geburtstag eintragen';document.getElementById('btn-del-bday').style.display='none';document.getElementById('m-bday').classList.add('on');}
-function editBday(id){var b=bdayData.find(function(x){return x.id===id;});if(!b)return;document.getElementById('bday-name').value=b.name;document.getElementById('bday-date').value=b.date;document.getElementById('bday-date').max=today();document.getElementById('bday-edit-id').value=id;document.getElementById('m-bday-title').textContent='🎂 Geburtstag bearbeiten';document.getElementById('btn-del-bday').style.display='block';document.getElementById('m-bday').classList.add('on');}
+function openBdayModal(){document.getElementById('bday-name').value='';document.getElementById('bday-date').value='';document.getElementById('bday-date').max=today();document.getElementById('bday-edit-id').value='';document.getElementById('m-bday-title').textContent='🎂 Geburtstag eintragen';document.getElementById('btn-del-bday').style.display='none';openM('m-bday');}
+function editBday(id){var b=bdayData.find(function(x){return x.id===id;});if(!b)return;document.getElementById('bday-name').value=b.name;document.getElementById('bday-date').value=b.date;document.getElementById('bday-date').max=today();document.getElementById('bday-edit-id').value=id;document.getElementById('m-bday-title').textContent='🎂 Geburtstag bearbeiten';document.getElementById('btn-del-bday').style.display='block';openM('m-bday');}
 async function saveBday(){var name=document.getElementById('bday-name').value.trim(),date=document.getElementById('bday-date').value,editId=document.getElementById('bday-edit-id').value;if(!name||!date){toast('⚠️','Fehlende Felder','Bitte Name und Datum eingeben.');return;}closeM('m-bday');try{if(editId){await api('birthdays?id=eq.'+editId,{method:'PATCH',body:JSON.stringify({name:name,date:date})});}else{await api('birthdays',{method:'POST',body:JSON.stringify({household_id:S.hh.id,name:name,date:date})});}await loadBdays();renderBdays();renderWeek();toast('🎂','Gespeichert',name+' eingetragen!');}catch(e){toast('❌','Fehler','Bitte zuerst die birthdays-Tabelle in Supabase anlegen.');console.error(e);}}
 async function deleteBday(){var id=document.getElementById('bday-edit-id').value;if(!id||!confirm('Geburtstag löschen?'))return;closeM('m-bday');try{await api('birthdays?id=eq.'+id,{method:'DELETE'});await loadBdays();renderBdays();renderWeek();toast('✕','Gelöscht','Geburtstag entfernt.');}catch(e){console.error(e);}}
 
@@ -1564,7 +1564,7 @@ function openApptModal(mid,date){
   // Build member selector – default: current person selected
   buildApptMemberSelector(mid);
   renderApptList();
-  document.getElementById('m-appt').classList.add('on');
+  openM('m-appt');
 }
 
 function buildApptMemberSelector(defaultMid){
@@ -1597,7 +1597,7 @@ async function openApptModalEdit(mid,date,apptId){
   document.getElementById('appt-desc').value=appt.description||'';
   document.getElementById('btn-save-appt').textContent='Speichern ✓';
   renderApptList();
-  document.getElementById('m-appt').classList.add('on');
+  openM('m-appt');
 }
 
 function renderApptList(){
@@ -1853,6 +1853,17 @@ function go(name){
   if(name==='profile')renderProfile();
 }
 function closeM(id){document.getElementById(id).classList.remove('on');}
+
+// Modals immer auf min 72% Bildschirmhöhe setzen
+function openM(id){
+  var el=document.getElementById(id);
+  el.classList.add('on');
+  var modal=el.querySelector('.modal');
+  if(modal){
+    var minH=Math.round(window.innerHeight*0.72);
+    modal.style.minHeight=minH+'px';
+  }
+}
 
 // TOAST
 var tTimer;
