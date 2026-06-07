@@ -999,7 +999,7 @@ function _renderWeekGrid(dates){
     });
   });
 
-  var cols='32px 1fr 1fr 1fr 1fr 1fr 0.45fr 0.45fr';
+  var cols='32px 1fr 1fr 1fr 1fr 1fr 1fr 1fr';
 
   // Berechne verfügbare Höhe für Kacheln
   // Abzüglich: TopBar (~52px), wknav (~48px), Header-Row (~36px), Legende (~28px), Bday-Row (~28px), Emma-Row, padding
@@ -1053,16 +1053,19 @@ function _renderWeekGrid(dates){
       var hasAppt=appts.length>0;
 
       var cell=document.createElement('div');
-      cell.style.cssText='border-radius:8px;cursor:pointer;border:1px solid;padding:4px 2px;height:'+cellH+'px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:2px;transition:all 0.1s;overflow:hidden;'
+      cell.style.cssText='border-radius:8px;cursor:pointer;border:1px solid;padding:4px 2px;height:'+cellH+'px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;transition:all 0.1s;overflow:hidden;'
         +(isT?'border-color:var(--ac);box-shadow:0 0 0 2px var(--ac);':'')
         +(isPast&&!isT?'opacity:0.38;':'')
         +(isW?'opacity:'+(isPast?'0.22':'0.42')+';background:var(--s1);border-color:var(--b1);'
           :(s?'background:'+m.color+'13;border-color:'+m.color+'60;':'background:var(--s2);border-color:var(--b1);'));
 
       var iconHtml='';
-      if(info||hasAppt){
-        var icns=(info?info.e:'')+(hasAppt?'📌':'');
-        iconHtml='<div style="font-size:'+Math.min(16,cellH*0.25)+'px;line-height:1.1;margin-top:2px">'+icns+'</div>';
+      var fs0=Math.min(16,cellH*0.25)+'px';
+      var statusIcon=info?info.e:'';
+      var apptIcon=hasAppt?'📌':'';
+      var combined=statusIcon+apptIcon;
+      if(combined){
+        iconHtml='<div style="font-size:'+fs0+';line-height:1.2;margin-top:2px;text-align:center">'+combined+'</div>';
       } else if(!isW){
         iconHtml='<div style="font-size:'+Math.min(18,cellH*0.3)+'px;color:var(--b2);margin-top:4px">+</div>';
       }
@@ -1969,7 +1972,7 @@ function go(name){
   document.getElementById('fab-bday').style.display=(name==='birthdays')?'flex':'none';
   document.getElementById('fab-termine').style.display=(name==='termine')?'flex':'none';
   if(name==='home')renderHome();
-  if(name==='termine'){var allD=get4Weeks();var wd=getWeek(0);var nwd=getWeek(1);loadAppts(allD.concat(wd).concat(nwd)).then(renderTermineScreen);}
+  if(name==='termine'){var wd0=getWeek(0);var wd1=getWeek(1);var wd2=getWeek(2);var wd3=getWeek(3);var allTermDates=wd0.concat(wd1).concat(wd2).concat(wd3);loadAppts(allTermDates).then(renderTermineScreen);}
   if(name==='week'){
     renderWeek();loadAll().then(function(){loadBdays().then(function(){syncVacationsToStatuses().then(renderWeek);});});
     if(!document.getElementById('wk-grid').dataset.swipe){document.getElementById('wk-grid').dataset.swipe='1';initSwipe(document.getElementById('wk-grid'),
