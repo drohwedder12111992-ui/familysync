@@ -573,6 +573,8 @@ async function loadAll(){
   if(!S.me)return;
   try{
     var hRes=await api('households?id=eq.'+S.me.household_id+'&select=*');S.hh=(await hRes.json())[0];
+    // BUG 4 FIX: Emma-Foto aus Supabase in localStorage cachen
+    if(S.hh&&S.hh.emma_photo){localStorage.setItem('fs_photo_emma',S.hh.emma_photo);}
     var mRes=await api('members?household_id=eq.'+S.me.household_id+'&select=*');S.members=await mRes.json();
     if(!S.members.length)return;
     S.members.forEach(function(m){
@@ -733,22 +735,18 @@ function renderEmmaToday(date){
   makeRow('🌆 Nachmittags','Wer holt Emma?',e,'evening');
 }
 
-// FIX 1: Aktivitäts-Feed – nur letzten Eintrag pro Person pro Tag, Avatar der betroffenen Person
+// BUG 1 FIX: Aktivitäts-Feed – dedupliziert nach Nachrichteninhalt (nicht Zeitstempel)
 function renderActs(){
   if(!S.acts.length){document.getElementById('activity-list').innerHTML='<div class="empty">Noch keine Aktivitäten</div>';return;}
-  // Deduplicate: keep only the latest entry per member_id per date-key
+  // Deduplicate by exact message content – keeps only first occurrence (latest, since sorted desc)
   var seen={};
   var deduped=[];
   S.acts.forEach(function(a){
-    // Extract date from message to deduplicate per person per day
-    var key=a.member_id+'_'+(a.created_at||'').substring(0,10);
-    // For status changes, deduplicate by member + action type (keep latest)
-    var msgKey=a.member_id+'_'+(a.message||'').substring(0,30);
-    if(!seen[msgKey]){seen[msgKey]=true;deduped.push(a);}
+    var msgNorm=(a.message||'').replace(/<[^>]+>/g,'').trim();
+    if(!seen[msgNorm]){seen[msgNorm]=true;deduped.push(a);}
   });
   var html='';
   deduped.slice(0,5).forEach(function(a){
-    // FIX 1: Use the member who performed the action, not a hardcoded avatar
     var m=byId(a.member_id);if(!m)return;
     var ph=getPhoto(m.id);
     var avStyle=ph?'background-image:url('+ph+');background-color:transparent':'background:'+m.color+'22;color:'+m.color;
@@ -847,15 +845,31 @@ function _renderWeekGrid(){
       if(isW){var empty=document.createElement('div');empty.style.cssText='aspect-ratio:1/1;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.03);opacity:0.3';erow.appendChild(empty);return;}
       var dog=S.dogs[date];var dm=dog&&dog.morning_member_id?byId(dog.morning_member_id):null;var de=dog&&dog.evening_member_id?byId(dog.evening_member_id):null;
       var wrap=document.createElement('div');wrap.className='emma-cell';if(isT)wrap.style.boxShadow='0 0 0 2px var(--ac)';
-      // Morning half
+      // BUG 2 FIX: Morning half – nur Foto/Avatar wenn jemand eingetragen, sonst klares 🌅
       var mh=document.createElement('div');mh.className='emma-half'+(isT?' today':'');
-      if(dm){var dmPh=getPhoto(dm.id);mh.style.cssText='background:'+(dmPh?'transparent':dm.color+'25')+';border-color:'+dm.color+'55';mh.innerHTML=dmPh?'<div style="width:18px;height:18px;border-radius:50%;background-image:url('+dmPh+');background-size:cover;background-position:center;border:1.5px solid '+dm.color+'"></div>':'<div style="width:18px;height:18px;border-radius:50%;background:'+dm.color+'22;color:'+dm.color+';border:1.5px solid '+dm.color+';display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700">'+dm.name[0]+'</div>';}
-      else{var emmaPh=localStorage.getItem('fs_photo_emma');mh.innerHTML=emmaPh?'<div style="width:18px;height:18px;border-radius:50%;background-image:url('+emmaPh+');background-size:cover;background-position:center;opacity:0.3"></div>':'<span style="font-size:8px;color:var(--t3)">🌅</span>';}
+      if(dm){
+        var dmPh=getPhoto(dm.id);
+        mh.style.cssText='background:'+(dmPh?'transparent':dm.color+'25')+';border-color:'+dm.color+'55';
+        mh.innerHTML=dmPh
+          ?'<div style="width:18px;height:18px;border-radius:50%;background-image:url('+dmPh+');background-size:cover;background-position:center;border:1.5px solid '+dm.color+'"></div>'
+          :'<div style="width:18px;height:18px;border-radius:50%;background:'+dm.color+'22;color:'+dm.color+';border:1.5px solid '+dm.color+';display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700">'+dm.name[0]+'</div>';
+      } else {
+        // Niemand eingetragen – klares leeres Symbol, kein Foto
+        mh.innerHTML='<span style="font-size:10px;color:var(--t3)">🌅</span>';
+      }
       (function(dt){mh.onclick=function(){openEmma(dt,'morning');};})(date);
-      // Evening half
+      // BUG 2 FIX: Evening half – nur Foto/Avatar wenn jemand eingetragen, sonst klares 🌆
       var eh=document.createElement('div');eh.className='emma-half'+(isT?' today':'');
-      if(de){var dePh=getPhoto(de.id);eh.style.cssText='background:'+(dePh?'transparent':de.color+'25')+';border-color:'+de.color+'55';eh.innerHTML=dePh?'<div style="width:18px;height:18px;border-radius:50%;background-image:url('+dePh+');background-size:cover;background-position:center;border:1.5px solid '+de.color+'"></div>':'<div style="width:18px;height:18px;border-radius:50%;background:'+de.color+'22;color:'+de.color+';border:1.5px solid '+de.color+';display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700">'+de.name[0]+'</div>';}
-      else{var emmaPh2=localStorage.getItem('fs_photo_emma');eh.innerHTML=emmaPh2?'<div style="width:18px;height:18px;border-radius:50%;background-image:url('+emmaPh2+');background-size:cover;background-position:center;opacity:0.3"></div>':'<span style="font-size:8px;color:var(--t3)">🌆</span>';}
+      if(de){
+        var dePh=getPhoto(de.id);
+        eh.style.cssText='background:'+(dePh?'transparent':de.color+'25')+';border-color:'+de.color+'55';
+        eh.innerHTML=dePh
+          ?'<div style="width:18px;height:18px;border-radius:50%;background-image:url('+dePh+');background-size:cover;background-position:center;border:1.5px solid '+de.color+'"></div>'
+          :'<div style="width:18px;height:18px;border-radius:50%;background:'+de.color+'22;color:'+de.color+';border:1.5px solid '+de.color+';display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700">'+de.name[0]+'</div>';
+      } else {
+        // Niemand eingetragen – klares leeres Symbol, kein Foto
+        eh.innerHTML='<span style="font-size:10px;color:var(--t3)">🌆</span>';
+      }
       (function(dt){eh.onclick=function(){openEmma(dt,'evening');};})(date);
       wrap.appendChild(mh);wrap.appendChild(eh);erow.appendChild(wrap);
     });
@@ -1105,6 +1119,7 @@ function attachTermineCardListeners(container){
   });
 }
 
+// BUG 3 FIX: renderHeuteTermine – Click-Handler korrekt nach innerHTML setzen
 function renderHeuteTermine(){
   var td=today();var sec=document.getElementById('heute-termine-sec');if(!sec)return;
   var items=[];
@@ -1112,6 +1127,7 @@ function renderHeuteTermine(){
   if(!items.length){sec.innerHTML='';return;}
   items.sort(function(a,b){return (a.a.time_from||a.a.time||'').localeCompare(b.a.time_from||b.a.time||'');});
   sec.innerHTML='<div class="sectitle">Termine heute</div>'+items.map(function(x){return termineCardHtml(x.m,x.a,today());}).join('');
+  // Bug 3: Listener NACH innerHTML setzen
   attachTermineCardListeners(sec);
 }
 
@@ -1202,9 +1218,36 @@ async function syncVacationsToStatuses(){
   for(var i=0;i<confirmed.length;i++){var v=confirmed[i];var mids=v.member_ids&&v.member_ids.length?v.member_ids:(v.confirmed_by_ids&&v.confirmed_by_ids.length?v.confirmed_by_ids:[]);if(!mids.length)continue;var cur=new Date(v.start_date+'T12:00:00'),end=new Date(v.end_date+'T12:00:00');while(cur<=end){var date=cur.toISOString().split('T')[0];for(var j=0;j<mids.length;j++){var mid=mids[j];var existing=S.statuses[mid+'_'+date];if(!existing||existing.status!=='vacation'){try{await api('daily_statuses',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=representation','Content-Type':'application/json'},body:JSON.stringify({member_id:mid,date:date,status:'vacation',note:v.name||null,updated_at:new Date().toISOString()})});S.statuses[mid+'_'+date]={member_id:mid,date:date,status:'vacation',note:v.name||null};}catch(e){try{await api('daily_statuses?member_id=eq.'+mid+'&date=eq.'+date,{method:'PATCH',body:JSON.stringify({status:'vacation',note:v.name||null,updated_at:new Date().toISOString()})});S.statuses[mid+'_'+date]={member_id:mid,date:date,status:'vacation',note:v.name||null};}catch(e2){}}}}cur.setDate(cur.getDate()+1);}}
 }
 
-// EMMA PHOTO
-function loadEmmaPhoto(){var ph=localStorage.getItem('fs_photo_emma');var av=document.getElementById('emma-av');if(!av)return;if(ph){av.innerHTML='<img src="'+ph+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%">';}else{av.innerHTML='🐕';av.style.fontSize='22px';}}
-function handleEmmaPhoto(e){var file=e.target.files[0];if(!file)return;if(file.size>5*1024*1024){toast('⚠️','Zu groß','Bitte ein Bild unter 5MB wählen.');return;}var reader=new FileReader();reader.onload=function(ev){localStorage.setItem('fs_photo_emma',ev.target.result);loadEmmaPhoto();renderWeek();renderHome();toast('📷','Emmas Foto gespeichert!','Emma sieht jetzt noch süßer aus 🐕');};reader.readAsDataURL(file);}
+// BUG 4 FIX: Emma-Foto in Supabase speichern und laden (geräteübergreifend)
+function loadEmmaPhoto(){
+  // Erst aus localStorage (schnell), dann Supabase-Wert bevorzugen
+  var ph=S.hh&&S.hh.emma_photo?S.hh.emma_photo:localStorage.getItem('fs_photo_emma');
+  if(ph&&S.hh&&S.hh.emma_photo){localStorage.setItem('fs_photo_emma',ph);}
+  var av=document.getElementById('emma-av');
+  if(!av)return;
+  if(ph){av.innerHTML='<img src="'+ph+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%">';}
+  else{av.innerHTML='🐕';av.style.fontSize='22px';}
+}
+
+function handleEmmaPhoto(e){
+  var file=e.target.files[0];if(!file)return;
+  if(file.size>5*1024*1024){toast('⚠️','Zu groß','Bitte ein Bild unter 5MB wählen.');return;}
+  var reader=new FileReader();
+  reader.onload=async function(ev){
+    var url=ev.target.result;
+    localStorage.setItem('fs_photo_emma',url);
+    // BUG 4 FIX: Auch in Supabase speichern
+    try{
+      await api('households?id=eq.'+S.hh.id,{method:'PATCH',body:JSON.stringify({emma_photo:url})});
+      if(S.hh)S.hh.emma_photo=url;
+      toast('📷','Emmas Foto gespeichert!','Auf allen Geräten sichtbar 🐕');
+    }catch(err){
+      toast('📷','Emmas Foto gespeichert!','Emma sieht jetzt noch süßer aus 🐕');
+    }
+    loadEmmaPhoto();renderWeek();renderHome();
+  };
+  reader.readAsDataURL(file);
+}
 
 // SWIPE
 function initSwipe(el,onLeft,onRight){var startX=0,startY=0,moved=false;el.addEventListener('touchstart',function(e){startX=e.touches[0].clientX;startY=e.touches[0].clientY;moved=false;},{passive:true});el.addEventListener('touchmove',function(e){moved=true;},{passive:true});el.addEventListener('touchend',function(e){if(!moved)return;var dx=e.changedTouches[0].clientX-startX;var dy=e.changedTouches[0].clientY-startY;if(Math.abs(dx)>Math.abs(dy)*1.5&&Math.abs(dx)>40){if(dx<0)onLeft();else onRight();}},{passive:true});}
