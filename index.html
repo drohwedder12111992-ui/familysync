@@ -441,7 +441,12 @@ body{background:var(--bg);color:var(--t1);font-family:var(--fb);height:100dvh;ov
           </div>
         </div>
       </div>
-      <button class="btn" id="btn-copy-code">Code kopieren 📋</button>
+      <div class="invcard" id="push-card">
+        <div class="invlabel">Push-Benachrichtigungen</div>
+        <div style="font-size:12px;color:var(--t2);margin:6px 0 10px">Erhalte Mitteilungen wenn sich etwas ändert – auch wenn die App geschlossen ist.</div>
+        <button id="btn-push-activate" class="btn" style="margin:0">🔔 Push aktivieren</button>
+        <div id="push-status" style="font-size:12px;color:var(--gr);margin-top:8px;display:none">✅ Push aktiv</div>
+      </div>
       <button class="logoutbtn" id="btn-logout">Abmelden</button>
     </div>
   </div>
@@ -868,6 +873,15 @@ function setupEventListeners(){
   document.getElementById('btn-crop-cancel').onclick=function(){document.getElementById('m-crop').style.display='none';document.getElementById('photo-input').value='';};
   document.getElementById('btn-push-yes').onclick=reqPush;
   document.getElementById('btn-push-no').onclick=dismissPush;
+  document.getElementById('btn-push-activate').onclick=async function(){
+    if(Notification.permission==='granted'){
+      await subscribeWebPush();
+      updatePushStatus();
+    } else {
+      await reqPush();
+      updatePushStatus();
+    }
+  };
   document.querySelectorAll('.overlay').forEach(function(o){o.onclick=function(e){if(e.target===o)o.classList.remove('on');};});
 }
 
@@ -1998,7 +2012,7 @@ function go(name){
   }
   if(name==='vacation'){renderVacs();loadAll().then(function(){loadVacs().then(renderVacs);});}
   if(name==='birthdays'){renderBdays();loadBdays().then(renderBdays);}
-  if(name==='profile')renderProfile();
+  if(name==='profile'){renderProfile();updatePushStatus();}
 }
 function closeM(id){document.getElementById(id).classList.remove('on');}
 
@@ -2189,11 +2203,15 @@ var PUSH_FUNCTION_URL='https://jwzktomctkpvbazlfhln.supabase.co/functions/v1/sen
 function initPush(){
   if(!('Notification' in window)||!('serviceWorker' in navigator))return;
   pushEnabled=Notification.permission==='granted';
+  // Immer versuchen zu subscriben wenn Erlaubnis vorhanden
+  if(pushEnabled){
+    subscribeWebPush();
+    return;
+  }
   if(localStorage.getItem('fs_push_dismissed'))return;
   if(Notification.permission==='default'){
     setTimeout(function(){document.getElementById('pushbanner').style.display='block';},4000);
   }
-  if(pushEnabled)subscribeWebPush();
 }
 
 async function reqPush(){
@@ -2325,7 +2343,31 @@ function scheduleBdayCheck(){
   });
 }
 
-function scheduleEmmaReminder(){ /* deaktiviert */ }
+async function updatePushStatus(){
+  var btn=document.getElementById('btn-push-activate');
+  var status=document.getElementById('push-status');
+  if(!btn)return;
+  if(Notification.permission==='granted'){
+    var reg=await navigator.serviceWorker.ready;
+    var sub=await reg.pushManager.getSubscription();
+    if(sub){
+      btn.style.display='none';
+      if(status)status.style.display='block';
+    } else {
+      btn.style.display='block';
+      btn.textContent='🔔 Push aktivieren';
+      if(status)status.style.display='none';
+    }
+  } else if(Notification.permission==='denied'){
+    btn.style.display='block';
+    btn.textContent='❌ Push in Einstellungen erlauben';
+    btn.disabled=true;
+  } else {
+    btn.style.display='block';
+    btn.textContent='🔔 Push aktivieren';
+    if(status)status.style.display='none';
+  }
+}
 
 // ═══════════════════════════════════
 // ⚡ SERVICE WORKER REGISTRATION
