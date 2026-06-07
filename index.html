@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="build" content="2026-06-07-v44">
+<meta name="build" content="2026-06-07-v45">
 
 <!-- PWA Core -->
 <meta name="mobile-web-app-capable" content="yes">
@@ -445,7 +445,7 @@ body{background:var(--bg);color:var(--t1);font-family:var(--fb);height:100dvh;ov
         <div class="invlabel">Push-Benachrichtigungen</div>
         <div style="font-size:12px;color:var(--t2);margin:6px 0 10px">Erhalte Mitteilungen wenn sich etwas ändert – auch wenn die App geschlossen ist.</div>
         <button id="btn-push-activate" class="btn" style="margin:0">🔔 Push aktivieren</button>
-        <div id="push-status" style="font-size:12px;color:var(--gr);margin-top:8px;display:none">✅ Push aktiv</div>
+        <div id="push-status" style="font-size:12px;color:var(--gr);margin-top:8px;display:none">✅ Push aktiv – <span style="color:var(--t3);cursor:pointer;text-decoration:underline" id="btn-push-reset">Zurücksetzen</span></div>
       </div>
       <button class="logoutbtn" id="btn-logout">Abmelden</button>
     </div>
@@ -881,6 +881,9 @@ function setupEventListeners(){
       } else {
         reqPush();
       }
+    }
+    if(e.target&&e.target.id==='btn-push-reset'){
+      resetPush();
     }
   });
   document.querySelectorAll('.overlay').forEach(function(o){o.onclick=function(e){if(e.target===o)o.classList.remove('on');};});
@@ -2401,6 +2404,18 @@ async function updatePushStatus(){
     btn.disabled=false;
     if(status)status.style.display='none';
   }
+}
+
+async function resetPush(){
+  try{
+    var reg=await navigator.serviceWorker.ready;
+    var sub=await reg.pushManager.getSubscription();
+    if(sub)await sub.unsubscribe();
+    await api('push_subscriptions?member_id=eq.'+S.me.id,{method:'DELETE'});
+    pushEnabled=false;
+    toast('🔔','Push zurückgesetzt','Tippe auf "Push aktivieren" um es neu einzurichten.');
+    updatePushStatus();
+  }catch(e){console.error('resetPush:',e);}
 }
 
 // ═══════════════════════════════════
