@@ -2183,20 +2183,17 @@ function initPRowSwipe(){
 // 🔔 PUSH NOTIFICATIONS (verbessert)
 // ═══════════════════════════════════
 var pushEnabled=false;
+var VAPID_PUBLIC_KEY='BIbfW119epxynLKMysR21Qc1K2bsUgDDAhHqROMeFBHDzqzEE4fm0VHctZeVxGXYgp3zonWadBJPLoq4eXWWURk';
+var PUSH_FUNCTION_URL='https://jwzktomctkpvbazlfhln.supabase.co/functions/v1/send-push';
 
 function initPush(){
-  if(!('Notification' in window))return;
+  if(!('Notification' in window)||!('serviceWorker' in navigator))return;
   pushEnabled=Notification.permission==='granted';
   if(localStorage.getItem('fs_push_dismissed'))return;
   if(Notification.permission==='default'){
     setTimeout(function(){document.getElementById('pushbanner').style.display='block';},4000);
   }
-  // Schedule daily birthday check
-  if(pushEnabled)scheduleBdayCheck();
-  // Schedule emma reminder
-  if(pushEnabled)scheduleEmmaReminder();
-  // Supabase realtime for partner changes
-  if(pushEnabled)initRealtimePush();
+  if(pushEnabled)subscribeWebPush();
 }
 
 async function reqPush(){
@@ -2204,10 +2201,8 @@ async function reqPush(){
   var p=await Notification.requestPermission();
   if(p==='granted'){
     pushEnabled=true;
+    await subscribeWebPush();
     toast('🔔','Push aktiviert!','Du wirst ab sofort benachrichtigt.');
-    scheduleBdayCheck();
-    scheduleEmmaReminder();
-    initRealtimePush();
   } else {
     toast('❌','Push abgelehnt','Bitte in den Browser-Einstellungen aktivieren.');
   }
@@ -2218,147 +2213,128 @@ function dismissPush(){
   localStorage.setItem('fs_push_dismissed','1');
 }
 
+// Subscribe to Web Push and save subscription to Supabase
+async function subscribeWebPush(){
+  try{
+    var reg=await navigator.serviceWorker.ready;
+    var existing=await reg.pushManager.getSubscription();
+    if(existing)await existing.unsubscribe();
+
+    // Convert VAPID public key
+    var keyBytes=b64urlToUint8Array(VAPID_PUBLIC_KEY);
+    var sub=await reg.pushManager.subscribe({
+      userVisibleOnly:true,
+      applicationServerKey:keyBytes
+    });
+
+    // Save to Supabase
+    await api('push_subscriptions',{
+      method:'POST',
+      body:JSON.stringify({
+        member_id:S.me.id,
+        household_id:S.hh.id,
+        subscription:sub.toJSON()
+      })
+    });
+    console.log('Web Push subscribed');
+    scheduleBdayCheck();
+  }catch(e){console.error('Web Push subscribe error:',e);}
+}
+
+function b64urlToUint8Array(b64){
+  var pad=b64.length%4;
+  if(pad)b64+=Array(4-pad+1).join('=');
+  var raw=atob(b64.replace(/-/g,'+').replace(/_/g,'/'));
+  var arr=new Uint8Array(raw.length);
+  for(var i=0;i<raw.length;i++)arr[i]=raw.charCodeAt(i);
+  return arr;
+}
+
+// Send push to partner via Edge Function
+async function pushToPartner(senderName, what){
+  if(!S.me||!S.hh)return;
+  try{
+    await fetch(PUSH_FUNCTION_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+SK},
+      body:JSON.stringify({
+        household_id:S.hh.id,
+        sender_member_id:S.me.id,
+        title:'ROH 🏠 '+senderName,
+        body:what
+      })
+    });
+  }catch(e){console.log('pushToPartner error:',e);}
+}
+
+// Send push to both (for birthdays)
+async function pushToBoth(title, body){
+  if(!S.me||!S.hh)return;
+  try{
+    await fetch(PUSH_FUNCTION_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+SK},
+      body:JSON.stringify({
+        household_id:S.hh.id,
+        title:title,
+        body:body
+      })
+    });
+  }catch(e){console.log('pushToBoth error:',e);}
+}
+
 function sendNotification(title,body,tag){
   if(Notification.permission!=='granted')return;
   try{
-    var n=new Notification(title,{body:body,icon:'icon.svg',badge:'icon.svg',tag:tag||'roh',renotify:true});
-    n.onclick=function(){window.focus();n.close();};
-  }catch(e){console.log('Notification error:',e);}
-}
-
-function pushToPartner(name,what){
-  // Notify if the OTHER person changed something (checked via member_id)
-  // Since we can't push to another device directly without a server,
-  // the partner will see it on next poll or via realtime
-  // But we CAN notify locally if this device is the partner's device
-  if(!S.me||!S.members)return;
-  var partner=S.members.find(function(m){return m.id!==S.me.id;});
-  if(!partner)return;
-  // Will trigger on partner's device via realtime subscription
+    if(navigator.serviceWorker.controller){
+      navigator.serviceWorker.controller.postMessage({type:'notify',title:title,body:body,tag:tag});
+    } else {
+      new Notification(title,{body:body,icon:'/familysync/icon.svg',tag:tag||'roh'});
+    }
+  }catch(e){}
 }
 
 function scheduleBdayCheck(){
-  // Check birthdays once per day
   var lastCheck=localStorage.getItem('fs_bday_check');
   var today2=today();
   if(lastCheck===today2)return;
   localStorage.setItem('fs_bday_check',today2);
   if(!bdayData.length)return;
-  // Today's birthdays
+
+  // Today's birthdays → push to both
   var todayBdays=bdayData.filter(function(b){
     var d=new Date(b.date+'T12:00:00'),n=new Date(today2+'T12:00:00');
     return d.getDate()===n.getDate()&&d.getMonth()===n.getMonth();
   });
   todayBdays.forEach(function(b){
-    sendNotification('🎂 Geburtstag!',b.name+' hat heute Geburtstag!','bday-'+b.id);
+    var bYear=new Date(b.date+'T12:00:00').getFullYear();
+    var age=new Date(today2+'T12:00:00').getFullYear()-bYear;
+    pushToBoth('🎂 Heute Geburtstag!',b.name+' wird '+age+' Jahre alt!');
   });
-  // Tomorrow's birthdays (reminder)
+
+  // Tomorrow's birthdays → reminder to both
   var tomorrow=addDays(today2,1);
   var tmBdays=bdayData.filter(function(b){
     var d=new Date(b.date+'T12:00:00'),t=new Date(tomorrow+'T12:00:00');
     return d.getDate()===t.getDate()&&d.getMonth()===t.getMonth();
   });
   tmBdays.forEach(function(b){
-    sendNotification('🎂 Morgen Geburtstag!',b.name+' hat morgen Geburtstag – nicht vergessen!','bday-tm-'+b.id);
+    var bYear=new Date(b.date+'T12:00:00').getFullYear();
+    var age=new Date(tomorrow+'T12:00:00').getFullYear()-bYear;
+    pushToBoth('🎂 Morgen Geburtstag!',b.name+' wird morgen '+age+' – nicht vergessen!');
   });
 }
 
-function scheduleEmmaReminder(){
-  // Deaktiviert – nicht benötigt
-}
-
-function initRealtimePush(){
-  // Poll for partner changes every 30s and send push if something changed
-  // (Supabase Realtime WebSocket approach)
-  if(!S.me||!S.hh)return;
-  var lastActId2=S.acts.length?S.acts[0].id:null;
-  setInterval(async function(){
-    if(!pushEnabled)return;
-    try{
-      var res=await api('activity_log?household_id=eq.'+S.hh.id+'&order=created_at.desc&limit=1');
-      var acts=await res.json();
-      if(!acts.length)return;
-      var latest=acts[0];
-      if(lastActId2===null){lastActId2=latest.id;return;}
-      if(latest.id!==lastActId2&&latest.member_id!==S.me.id){
-        lastActId2=latest.id;
-        var cleanMsg=latest.message.replace(/<[^>]+>/g,'');
-        sendNotification('ROH 🏠',cleanMsg,'act-'+latest.id);
-        // Refresh data
-        await loadAll();renderHome();
-      }
-    }catch(e){}
-  },30000);
-}
+function scheduleEmmaReminder(){ /* deaktiviert */ }
 
 // ═══════════════════════════════════
 // ⚡ SERVICE WORKER REGISTRATION
 // ═══════════════════════════════════
 function initServiceWorker(){
   if(!('serviceWorker' in navigator))return;
-
-  // Versionsnummer = Timestamp des Builds → ändert sich bei jedem Push automatisch
-  var BUILD='__BUILD_TS__';
-
-  var swCode=`
-const CACHE='roh-${Date.now()}';
-const ASSETS=['/familysync/','/familysync/index.html'];
-
-// INSTALL: Cache befüllen und sofort aktivieren
-self.addEventListener('install',e=>{
-  e.waitUntil(
-    caches.open(CACHE)
-      .then(c=>c.addAll(ASSETS))
-      .then(()=>self.skipWaiting())
-  );
-});
-
-// ACTIVATE: Alle alten Caches löschen, sofort übernehmen
-self.addEventListener('activate',e=>{
-  e.waitUntil(
-    caches.keys()
-      .then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))
-      .then(()=>self.clients.claim())
-  );
-});
-
-// FETCH: Network-first – immer zuerst vom Server laden
-// Nur bei Netzwerkfehler auf Cache zurückfallen
-self.addEventListener('fetch',e=>{
-  if(e.request.method!=='GET')return;
-  // API-Calls nie cachen
-  if(e.request.url.includes('supabase')||e.request.url.includes('open-meteo')||e.request.url.includes('nominatim'))return;
-
-  e.respondWith(
-    fetch(e.request)
-      .then(resp=>{
-        // Erfolgreiche Antwort: Cache aktualisieren und zurückgeben
-        if(resp.ok){
-          var c=resp.clone();
-          caches.open(CACHE).then(cache=>cache.put(e.request,c));
-        }
-        return resp;
-      })
-      .catch(()=>{
-        // Offline: aus Cache laden
-        return caches.match(e.request);
-      })
-  );
-});
-
-// Neue Version erkannt: alle Clients neu laden
-self.addEventListener('message',e=>{
-  if(e.data==='skipWaiting')self.skipWaiting();
-});
-`;
-
-  try{
-    var blob=new Blob([swCode],{type:'application/javascript'});
-    var url=URL.createObjectURL(blob);
-    navigator.serviceWorker.register(url,{scope:'/familysync/'}).then(function(reg){
-      // Sofort auf Updates prüfen
+  navigator.serviceWorker.register('/familysync/sw.js',{scope:'/familysync/'})
+    .then(function(reg){
       reg.update();
-      // Wenn neue Version wartet: sofort aktivieren
       reg.addEventListener('updatefound',function(){
         var newSW=reg.installing;
         newSW.addEventListener('statechange',function(){
@@ -2367,15 +2343,12 @@ self.addEventListener('message',e=>{
           }
         });
       });
-    }).catch(function(e){
-      console.log('SW blob failed:',e.message);
-    });
+    })
+    .catch(function(e){console.log('SW registration failed:',e);});
 
-    // Wenn SW-Controller wechselt → Seite neu laden für frische Version
-    navigator.serviceWorker.addEventListener('controllerchange',function(){
-      window.location.reload();
-    });
-  }catch(e){console.log('SW skip:',e);}
+  navigator.serviceWorker.addEventListener('controllerchange',function(){
+    window.location.reload();
+  });
 }
 
 // START

@@ -1,36 +1,68 @@
-// FamilySync Service Worker
-const CACHE = 'familysync-v1';
+// ROH FamilySync Service Worker
+const CACHE = 'roh-v3';
+const ASSETS = ['/familysync/', '/familysync/index.html'];
 
 self.addEventListener('install', e => {
-  self.skipWaiting();
-});
-
-self.addEventListener('activate', e => {
-  e.waitUntil(self.clients.claim());
-});
-
-self.addEventListener('fetch', e => {
-  // Network first for API calls
-  if (e.request.url.includes('supabase.co') || e.request.url.includes('anthropic.com')) return;
-  e.respondWith(
-    fetch(e.request).catch(() => caches.match(e.request))
+  e.waitUntil(
+    caches.open(CACHE)
+      .then(c => c.addAll(ASSETS))
+      .then(() => self.skipWaiting())
   );
 });
 
-self.addEventListener('push', e => {
-  const data = e.data ? e.data.json() : { title: 'FamilySync', body: 'Neue Änderung' };
+self.addEventListener('activate', e => {
   e.waitUntil(
-    self.registration.showNotification(data.title || 'FamilySync', {
-      body: data.body || 'Neue Änderung in eurem Plan.',
-      icon: '/icon.png',
-      badge: '/icon.png',
-      vibrate: [100, 50, 100],
-      data: { url: '/' }
+    caches.keys()
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(() => self.clients.claim())
+  );
+});
+
+// Network-first
+self.addEventListener('fetch', e => {
+  if (e.request.method !== 'GET') return;
+  if (e.request.url.includes('supabase') || e.request.url.includes('open-meteo') || e.request.url.includes('nominatim')) return;
+  e.respondWith(
+    fetch(e.request)
+      .then(resp => {
+        if (resp.ok) {
+          caches.open(CACHE).then(c => c.put(e.request, resp.clone()));
+        }
+        return resp;
+      })
+      .catch(() => caches.match(e.request))
+  );
+});
+
+// Push notification received
+self.addEventListener('push', e => {
+  if (!e.data) return;
+  let data = {};
+  try { data = e.data.json(); } catch { data = { title: 'ROH', body: e.data.text() }; }
+  e.waitUntil(
+    self.registration.showNotification(data.title || 'ROH FamilySync', {
+      body: data.body || '',
+      icon: '/familysync/icon.svg',
+      badge: '/familysync/icon.svg',
+      vibrate: [200, 100, 200],
+      data: { url: '/familysync/' }
     })
   );
 });
 
+// Tap on notification → open app
 self.addEventListener('notificationclick', e => {
   e.notification.close();
-  e.waitUntil(clients.openWindow('/'));
+  e.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(cls => {
+      const appClient = cls.find(c => c.url.includes('/familysync/'));
+      if (appClient) return appClient.focus();
+      return clients.openWindow('/familysync/');
+    })
+  );
+});
+
+// Skip waiting on message
+self.addEventListener('message', e => {
+  if (e.data === 'skipWaiting') self.skipWaiting();
 });
