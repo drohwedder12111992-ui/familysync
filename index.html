@@ -1008,7 +1008,7 @@ function initSwipe(el, onLeft, onRight) {
     if(!moved)return;
     var dx=e.changedTouches[0].clientX-startX;
     var dy=e.changedTouches[0].clientY-startY;
-    if(Math.abs(dx)>Math.abs(dy)&&Math.abs(dx)>50){
+    if(Math.abs(dx)>Math.abs(dy)*1.5&&Math.abs(dx)>40){
       if(dx<0)onLeft(); else onRight();
     }
   }, {passive:true});
@@ -1070,25 +1070,28 @@ async function saveCroppedPhoto(){
 // PROFILE
 function renderProfile(){
   if(!S.me)return;var av=document.getElementById('pr-av');var ph=S.me.photo||localStorage.getItem('fs_photo_'+S.me.id);
+  av.style.cssText='width:68px;height:68px;border-radius:50%;border:3px solid '+S.me.color+';overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;';
   if(ph){
-    av.style.cssText='width:68px;height:68px;border-radius:50%;border:3px solid '+S.me.color+';background-image:url('+ph+');background-size:cover;background-position:center;background-color:transparent;display:block;overflow:hidden;';
-    av.textContent='';
+    av.innerHTML='<img src="'+ph+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />';
   } else {
-    av.style.cssText='width:68px;height:68px;border-radius:50%;border:3px solid '+S.me.color+';background:'+S.me.color+'22;color:'+S.me.color+';display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;';
+    av.style.background=S.me.color+'22';
+    av.style.color=S.me.color;
     av.textContent=S.me.name[0];
   }
   document.getElementById('pr-name').textContent=S.me.name;document.getElementById('pr-hh').textContent=S.hh?S.hh.name:'–';document.getElementById('inv-code').textContent=S.hh?S.hh.invite_code:'––––––';
   buildColorPickers();document.querySelectorAll('#cr-profile .cdot').forEach(function(d){d.classList.toggle('on',d.dataset.c===S.me.color);});
 }
 function updAvatars(){
-  if(!S.me)return;var ph=S.me.photo||localStorage.getItem('fs_photo_'+S.me.id);
+  if(!S.me)return;
+  var ph=S.me.photo||localStorage.getItem('fs_photo_'+S.me.id);
   ['av-home','av-week'].forEach(function(id){
     var el=document.getElementById(id);if(!el)return;
+    el.style.cssText='width:34px;height:34px;border-radius:50%;border:2px solid '+S.me.color+';cursor:pointer;flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;';
     if(ph){
-      el.style.cssText='width:34px;height:34px;border-radius:50%;border:2px solid '+S.me.color+';background-image:url('+ph+');background-size:cover;background-position:center;background-color:transparent;cursor:pointer;flex-shrink:0;';
-      el.textContent='';
+      el.innerHTML='<img src="'+ph+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />';
     } else {
-      el.style.cssText='width:34px;height:34px;border-radius:50%;border:2px solid '+S.me.color+';background:'+S.me.color+'22;color:'+S.me.color+';display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;cursor:pointer;flex-shrink:0;';
+      el.style.background=S.me.color+'22';
+      el.style.color=S.me.color;
       el.textContent=S.me.name[0];
     }
   });
@@ -1110,12 +1113,18 @@ function go(name){
   if(name==='week'){
     renderWeek();
     loadAll().then(function(){loadBdays().then(function(){syncVacationsToStatuses().then(renderWeek);});});
-    // Init swipe once
-    if(!document.getElementById('screen-week').dataset.swipe){
-      document.getElementById('screen-week').dataset.swipe='1';
-      initSwipe(document.getElementById('screen-week'),
-        function(){S.wkOff++;loadAll().then(function(){loadBdays().then(function(){syncVacationsToStatuses().then(renderWeek);});});},
-        function(){S.wkOff--;loadAll().then(function(){loadBdays().then(function(){syncVacationsToStatuses().then(renderWeek);});}); }
+    // Init swipe on wknav area (not scroll area)
+    if(!document.getElementById('wk-grid').dataset.swipe){
+      document.getElementById('wk-grid').dataset.swipe='1';
+      initSwipe(document.getElementById('wk-grid'),
+        function(){ // swipe left = next month
+          S.wkOff++;
+          loadAll().then(function(){loadBdays().then(function(){syncVacationsToStatuses().then(renderWeek);});});
+        },
+        function(){ // swipe right = prev month
+          S.wkOff--;
+          loadAll().then(function(){loadBdays().then(function(){syncVacationsToStatuses().then(renderWeek);});});
+        }
       );
     }
   }
