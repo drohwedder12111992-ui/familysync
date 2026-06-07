@@ -739,10 +739,18 @@ function showApp(){
       // Abgelaufene Schutzen bereinigen
       Object.keys(_protected).forEach(function(k){if(_protected[k]<=now)delete _protected[k];});
 
-      // Dog transfers
+      // Dog transfers – geschützte Einträge nicht überschreiben
       var dRes=await api('dog_transfers?household_id=eq.'+S.hh.id+'&date=gte.'+from+'&date=lte.'+to+'&select=*');
       var dogs=await dRes.json();
-      var newDogs={};dogs.forEach(function(d){newDogs[d.date]=d;});
+      var newDogs={};
+      dogs.forEach(function(d){newDogs[d.date]=d;});
+      // Geschützte dog_transfers beibehalten
+      Object.keys(S.dogs).forEach(function(date){
+        var dogKey='dog_'+date;
+        if(_protected[dogKey]&&_protected[dogKey]>now){
+          newDogs[date]=S.dogs[date];
+        }
+      });
       var dogChanged=JSON.stringify(newDogs)!==JSON.stringify(S.dogs);
       S.dogs=newDogs;
 
@@ -1201,12 +1209,27 @@ async function saveEmma(date,slot,mid){
   closeM('m-emma');var actualMid=mid==='none'?null:mid;var m=actualMid?byId(actualMid):null;var ex=S.dogs[date]||{};
   var newMorning=slot==='morning'?actualMid:(ex.morning_member_id||null);
   var newEvening=slot==='evening'?actualMid:(ex.evening_member_id||null);
+  var dogKey='dog_'+date;
+  _isSaving=true;
   try{
-    if(!newMorning&&!newEvening){await api('dog_transfers?household_id=eq.'+S.me.household_id+'&date=eq.'+date,{method:'DELETE'});delete S.dogs[date];}
-    else{var payload={household_id:S.me.household_id,date:date,morning_member_id:newMorning,evening_member_id:newEvening,updated_at:new Date().toISOString()};var dtRes=await api('dog_transfers?household_id=eq.'+S.me.household_id+'&date=eq.'+date,{method:'PATCH',headers:{'Prefer':'return=representation'},body:JSON.stringify(payload)});if(dtRes.status===404||dtRes.status===0){await api('dog_transfers',{method:'POST',headers:{'Prefer':'return=representation'},body:JSON.stringify(payload)});}S.dogs[date]=payload;}
-    if(actualMid){await logAct('<strong>'+(m?m.name:'?')+'</strong> '+(slot==='morning'?'bringt':'holt')+' Emma am '+fmtLong(date)+' 🐕');toast('🐕','Eingetragen',(m?m.name:'?')+' – '+(slot==='morning'?'Hinweg':'Rückweg'));}else{toast('✕','Gelöscht','Emma-Transfer für '+fmtShort(date)+' entfernt.');}
+    if(!newMorning&&!newEvening){
+      await api('dog_transfers?household_id=eq.'+S.me.household_id+'&date=eq.'+date,{method:'DELETE'});
+      delete S.dogs[date];
+      _protected[dogKey]=Date.now()+10000;
+    } else {
+      var payload={household_id:S.me.household_id,date:date,morning_member_id:newMorning,evening_member_id:newEvening,updated_at:new Date().toISOString()};
+      var dtRes=await api('dog_transfers?household_id=eq.'+S.me.household_id+'&date=eq.'+date,{method:'PATCH',headers:{'Prefer':'return=representation'},body:JSON.stringify(payload)});
+      if(dtRes.status===404||dtRes.status===0){
+        await api('dog_transfers',{method:'POST',headers:{'Prefer':'return=representation'},body:JSON.stringify(payload)});
+      }
+      S.dogs[date]=payload;
+      _protected[dogKey]=Date.now()+10000;
+    }
+    if(actualMid){await logAct('<strong>'+(m?m.name:'?')+'</strong> '+(slot==='morning'?'bringt':'holt')+' Emma am '+fmtLong(date)+' 🐕');toast('🐕','Eingetragen',(m?m.name:'?')+' – '+(slot==='morning'?'Hinweg':'Rückweg'));}
+    else{toast('✕','Gelöscht','Emma-Transfer für '+fmtShort(date)+' entfernt.');}
     renderHome();if(document.getElementById('screen-week').classList.contains('on'))renderWeek();
   }catch(e){toast('❌','Fehler','Bitte nochmal versuchen.');console.error(e);}
+  finally{setTimeout(function(){_isSaving=false;},5000);}
 }
 
 // VACATION
