@@ -623,8 +623,11 @@ async function loadAll(){
     var mRes=await api('members?household_id=eq.'+S.me.household_id+'&select=*');S.members=await mRes.json();
     if(!S.members.length)return;
     S.members.forEach(function(m){
-      if(m.photo){localStorage.setItem('fs_photo_'+m.id,m.photo);}
-      if(m.id===S.me.id&&m.photo&&!S.me.photo){S.me.photo=m.photo;localStorage.setItem('fs_me',JSON.stringify(S.me));}
+      // Supabase-Foto hat immer Vorrang über localStorage
+      if(m.photo){
+        localStorage.setItem('fs_photo_'+m.id,m.photo);
+        if(m.id===S.me.id){S.me.photo=m.photo;localStorage.setItem('fs_me',JSON.stringify(S.me));}
+      }
     });
     updAvatars();
     var ids=S.members.map(function(m){return m.id;}).join(',');
