@@ -1,4 +1,28 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">
-  <rect width="180" height="180" fill="black" rx="40"/>
-  <text x="90" y="125" font-family="Arial Black, Arial, sans-serif" font-size="62" font-weight="900" fill="white" text-anchor="middle" letter-spacing="2">ROH</text>
+  <defs>
+    <linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff69b4"/>
+      <stop offset="100%" stop-color="#f0d060"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="180" height="180" fill="#08080f" rx="40"/>
+
+  <!-- Corner accents - gold top-left, top-right -->
+  <path d="M22 42 L22 22 L42 22" fill="none" stroke="#f0d060" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M158 42 L158 22 L138 22" fill="none" stroke="#f0d060" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Corner accents - pink bottom-left, bottom-right -->
+  <path d="M22 138 L22 158 L42 158" fill="none" stroke="#ff69b4" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M158 138 L158 158 L138 158" fill="none" stroke="#ff69b4" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- ROH text with pink-to-gold gradient -->
+  <text x="90" y="108"
+    font-family="'Helvetica Neue', Arial, sans-serif"
+    font-size="48"
+    font-weight="800"
+    fill="url(#g1)"
+    text-anchor="middle"
+    letter-spacing="4">ROH</text>
 </svg>
