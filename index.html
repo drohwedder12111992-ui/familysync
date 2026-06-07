@@ -632,14 +632,15 @@ function getPhoto(mid){if(S.me&&S.me.id===mid&&S.me.photo)return S.me.photo;retu
 // Upsert status: erst PATCH versuchen, bei 404 POST
 async function upsertStatus(mid, date, status, note){
   var body=JSON.stringify({status:status,note:note||null,updated_at:new Date().toISOString()});
-  // Versuche erst PATCH (update existing)
+  // PATCH – Supabase gibt 200+leeres Array wenn kein Eintrag gefunden
   var res=await api('daily_statuses?member_id=eq.'+mid+'&date=eq.'+date,{method:'PATCH',headers:{'Prefer':'return=representation'},body:body});
-  if(res.status===404||res.status===0){
+  var text=await res.text();
+  var updated=text&&text!=='[]'&&text!=='null'&&text.length>2;
+  if(!updated){
     // Kein Eintrag vorhanden – neu anlegen
     var body2=JSON.stringify({member_id:mid,date:date,status:status,note:note||null,updated_at:new Date().toISOString()});
-    res=await api('daily_statuses',{method:'POST',headers:{'Prefer':'return=representation'},body:body2});
+    await api('daily_statuses',{method:'POST',headers:{'Prefer':'return=representation'},body:body2});
   }
-  return res;
 }
 
 async function init(){
@@ -1219,7 +1220,9 @@ async function saveEmma(date,slot,mid){
     } else {
       var payload={household_id:S.me.household_id,date:date,morning_member_id:newMorning,evening_member_id:newEvening,updated_at:new Date().toISOString()};
       var dtRes=await api('dog_transfers?household_id=eq.'+S.me.household_id+'&date=eq.'+date,{method:'PATCH',headers:{'Prefer':'return=representation'},body:JSON.stringify(payload)});
-      if(dtRes.status===404||dtRes.status===0){
+      var dtText=await dtRes.text();
+      var dtUpdated=dtText&&dtText!=='[]'&&dtText!=='null'&&dtText.length>2;
+      if(!dtUpdated){
         await api('dog_transfers',{method:'POST',headers:{'Prefer':'return=representation'},body:JSON.stringify(payload)});
       }
       S.dogs[date]=payload;
