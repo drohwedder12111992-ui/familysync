@@ -2236,26 +2236,30 @@ async function subscribeWebPush(){
   try{
     var reg=await navigator.serviceWorker.ready;
     var existing=await reg.pushManager.getSubscription();
-    if(existing)await existing.unsubscribe();
+    if(!existing){
+      var keyBytes=b64urlToUint8Array(VAPID_PUBLIC_KEY);
+      existing=await reg.pushManager.subscribe({
+        userVisibleOnly:true,
+        applicationServerKey:keyBytes
+      });
+    }
 
-    // Convert VAPID public key
-    var keyBytes=b64urlToUint8Array(VAPID_PUBLIC_KEY);
-    var sub=await reg.pushManager.subscribe({
-      userVisibleOnly:true,
-      applicationServerKey:keyBytes
+    // Upsert – überschreibt bestehenden Eintrag für dieses Member
+    await api('push_subscriptions?member_id=eq.'+S.me.id,{
+      method:'DELETE'
     });
-
-    // Save to Supabase
     await api('push_subscriptions',{
       method:'POST',
       body:JSON.stringify({
         member_id:S.me.id,
         household_id:S.hh.id,
-        subscription:sub.toJSON()
+        subscription:existing.toJSON()
       })
     });
+    pushEnabled=true;
     console.log('Web Push subscribed');
     scheduleBdayCheck();
+    updatePushStatus();
   }catch(e){console.error('Web Push subscribe error:',e);}
 }
 
