@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="build" content="2026-06-07-v43">
+<meta name="build" content="2026-06-07-v44">
 
 <!-- PWA Core -->
 <meta name="mobile-web-app-capable" content="yes">
@@ -2204,9 +2204,17 @@ var PUSH_FUNCTION_URL='https://jwzktomctkpvbazlfhln.supabase.co/functions/v1/sen
 function initPush(){
   if(!('Notification' in window)||!('serviceWorker' in navigator))return;
   pushEnabled=Notification.permission==='granted';
-  // Immer versuchen zu subscriben wenn Erlaubnis vorhanden
   if(pushEnabled){
-    subscribeWebPush();
+    // Prüfe ob dieses Gerät bereits subscribed ist
+    navigator.serviceWorker.ready.then(function(reg){
+      reg.pushManager.getSubscription().then(function(sub){
+        if(sub){
+          // Bereits subscribed – Subscription in Supabase aktualisieren
+          subscribeWebPush();
+        }
+        // Kein sub → warten bis User Button drückt
+      });
+    });
     return;
   }
   if(localStorage.getItem('fs_push_dismissed'))return;
@@ -2352,24 +2360,45 @@ async function updatePushStatus(){
   var btn=document.getElementById('btn-push-activate');
   var status=document.getElementById('push-status');
   if(!btn)return;
-  if(Notification.permission==='granted'){
-    var reg=await navigator.serviceWorker.ready;
-    var sub=await reg.pushManager.getSubscription();
-    if(sub){
-      btn.style.display='none';
-      if(status)status.style.display='block';
-    } else {
-      btn.style.display='block';
-      btn.textContent='🔔 Push aktivieren';
-      if(status)status.style.display='none';
-    }
-  } else if(Notification.permission==='denied'){
+
+  if(!('Notification' in window)||!('serviceWorker' in navigator)){
+    btn.style.display='none';
+    return;
+  }
+
+  if(Notification.permission==='denied'){
     btn.style.display='block';
     btn.textContent='❌ Push in Einstellungen erlauben';
     btn.disabled=true;
+    if(status)status.style.display='none';
+    return;
+  }
+
+  if(Notification.permission==='granted'){
+    // Prüfe ob DIESES Gerät subscribed ist
+    try{
+      var reg=await navigator.serviceWorker.ready;
+      var sub=await reg.pushManager.getSubscription();
+      if(sub){
+        btn.style.display='none';
+        if(status)status.style.display='block';
+      } else {
+        // Gerät hat Erlaubnis aber keine Subscription → Button zeigen
+        btn.style.display='block';
+        btn.textContent='🔔 Push aktivieren';
+        btn.disabled=false;
+        if(status)status.style.display='none';
+      }
+    }catch(e){
+      btn.style.display='block';
+      btn.textContent='🔔 Push aktivieren';
+      btn.disabled=false;
+    }
   } else {
+    // permission === 'default'
     btn.style.display='block';
     btn.textContent='🔔 Push aktivieren';
+    btn.disabled=false;
     if(status)status.style.display='none';
   }
 }
