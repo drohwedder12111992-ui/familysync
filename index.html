@@ -234,6 +234,7 @@ body{background:var(--bg);color:var(--t1);font-family:var(--fb);height:100dvh;ov
         <div id="emma-today"><div class="empty" style="padding:6px 0">Lädt…</div></div>
       </div>
     </div>
+    <div class="sec" style="margin-top:10px" id="heute-termine-sec"></div>
     <div class="sec" style="margin-top:10px"><div class="sectitle">Letzte Aktivität</div><div id="activity-list"><div class="empty">Noch keine Aktivitäten</div></div></div>
   </div>
   <div class="screen" id="screen-week">
@@ -245,6 +246,14 @@ body{background:var(--bg);color:var(--t1);font-family:var(--fb);height:100dvh;ov
     </div>
   </div>
 
+  <div class="screen" id="screen-termine">
+    <div class="tb"><div><div class="tb-title">📌 Termine</div><div class="tb-sub">Alle Termine im Überblick</div></div></div>
+    <div class="sec">
+      <div id="termine-today-sec"></div>
+      <div id="termine-week-sec" style="margin-top:12px"></div>
+      <div id="termine-month-sec" style="margin-top:12px"></div>
+    </div>
+  </div>
   <div class="screen" id="screen-vacation">
     <div class="tb"><div><div class="tb-title">🏖️ Urlaube</div><div class="tb-sub">Erst wenn beide bestätigt haben</div></div></div>
     <div class="sec" id="vac-list"><div class="empty">Lädt…</div></div>
@@ -282,6 +291,7 @@ body{background:var(--bg);color:var(--t1);font-family:var(--fb);height:100dvh;ov
     <div class="ni on" id="ni-home" data-s="home"><span class="ni-icon">🏠</span><span class="ni-label">Heute</span></div>
     <div class="ni" id="ni-week" data-s="week"><span class="ni-icon">📅</span><span class="ni-label">Woche</span></div>
     <div class="ni" id="ni-vacation" data-s="vacation"><span class="ni-icon">🏖️</span><span class="ni-label">Urlaub</span></div>
+    <div class="ni" id="ni-termine" data-s="termine"><span class="ni-icon">📌</span><span class="ni-label">Termine</span></div>
     <div class="ni" id="ni-birthdays" data-s="birthdays"><span class="ni-icon">🎂</span><span class="ni-label">Geburtstage</span></div>
     <div class="ni" id="ni-profile" data-s="profile"><span class="ni-icon">👤</span><span class="ni-label">Profil</span></div>
   </div>
@@ -315,10 +325,11 @@ body{background:var(--bg);color:var(--t1);font-family:var(--fb);height:100dvh;ov
     <div id="appt-list" style="margin-bottom:12px;max-height:180px;overflow-y:auto;border-radius:10px;background:var(--s3);padding:2px 8px"></div>
     <div style="background:var(--s2);border:1px solid var(--b2);border-radius:var(--rsm);padding:10px 12px;margin-bottom:10px">
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--t3);margin-bottom:8px">Neuer Termin</div>
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
-        <span style="font-size:18px">🕐</span>
-        <input type="time" id="appt-time" style="background:var(--s3);border:1px solid var(--b2);border-radius:8px;padding:7px 10px;font-family:var(--fb);font-size:15px;color:var(--t1);outline:none;width:110px">
-        <input type="text" id="appt-desc" class="inp" placeholder="z.B. Tennis mit Henning" style="flex:1">
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+        <input type="time" id="appt-time" style="background:var(--s3);border:1px solid var(--b2);border-radius:8px;padding:7px 8px;font-family:var(--fb);font-size:14px;color:var(--t1);outline:none;width:95px" placeholder="Von">
+        <span style="font-size:12px;color:var(--t3)">–</span>
+        <input type="time" id="appt-time-to" style="background:var(--s3);border:1px solid var(--b2);border-radius:8px;padding:7px 8px;font-family:var(--fb);font-size:14px;color:var(--t1);outline:none;width:95px" placeholder="Bis">
+        <input type="text" id="appt-desc" class="inp" placeholder="z.B. Tennis mit Henning" style="flex:1;min-width:120px">
       </div>
       <button id="btn-save-appt" style="width:100%;padding:10px;background:linear-gradient(135deg,var(--ac),#9b8df8);border:none;border-radius:50px;color:white;font-family:var(--fb);font-size:14px;font-weight:500;cursor:pointer">+ Hinzufügen</button>
     </div>
@@ -379,7 +390,7 @@ var SM={office:{e:'🏢',l:'Büro',c:'co'},home:{e:'🏠',l:'Homeoffice',c:'ch'}
 var WC={office:'wkco',home:'wkch',travel:'wkct',vacation:'wkcv',appt:'wkca',other:'wkcf'};
 
 // HELPERS
-function today(){return new Date().toISOString().split('T')[0];}
+function today(){var t=new Date();return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');}
 function addDays(d,n){var x=new Date(d+'T12:00:00');x.setDate(x.getDate()+n);return x.toISOString().split('T')[0];}
 function fmtShort(d){return new Date(d+'T12:00:00').toLocaleDateString('de-DE',{day:'numeric',month:'short'});}
 function fmtLong(d){return new Date(d+'T12:00:00').toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long'});}
@@ -389,16 +400,16 @@ function getSt(mid,date){return S.statuses[mid+'_'+date]||null;}
 function isWknd(d){var x=new Date(d+'T12:00:00');return x.getDay()===0||x.getDay()===6;}
 function getWeek(off){var t=new Date();var day=t.getDay()===0?6:t.getDay()-1;var mon=new Date(t);mon.setDate(t.getDate()-day+(off||0)*7);var r=[];for(var i=0;i<7;i++){var d=new Date(mon);d.setDate(mon.getDate()+i);r.push(d.toISOString().split('T')[0]);}return r;}
 function get4Weeks(){
-  // Show full month based on wkOff (month offset)
   var t=new Date();
   var targetMonth=new Date(t.getFullYear(),t.getMonth()+(S.wkOff||0),1);
   var r=[];
-  // Get all days of the target month
   var year=targetMonth.getFullYear(),month=targetMonth.getMonth();
   var daysInMonth=new Date(year,month+1,0).getDate();
   for(var i=1;i<=daysInMonth;i++){
+    // Use local date string to avoid timezone issues
     var d=new Date(year,month,i);
-    r.push(d.toISOString().split('T')[0]);
+    var ds=year+'-'+String(month+1).padStart(2,'0')+'-'+String(i).padStart(2,'0');
+    r.push(ds);
   }
   return r;
 }
@@ -481,8 +492,9 @@ function setupEventListeners(){
   document.querySelectorAll('.ni').forEach(function(ni){ni.onclick=function(){go(ni.dataset.s);};});
   document.getElementById('btn-wk-prev').onclick=function(){S.wkOff--;loadAll().then(function(){loadBdays().then(renderWeek);});};
   document.getElementById('btn-wk-next').onclick=function(){S.wkOff++;loadAll().then(function(){loadBdays().then(renderWeek);});};
-  document.getElementById('av-home').onclick=function(){go('profile');};
-  document.getElementById('av-week').onclick=function(){go('profile');};
+  // av onclick - use event delegation to avoid overwriting img
+  document.getElementById('av-home').addEventListener('click',function(){go('profile');});
+  document.getElementById('av-week').addEventListener('click',function(){go('profile');});
   document.querySelectorAll('.obtn').forEach(function(btn){btn.onclick=function(){var s=btn.dataset.status,e=btn.dataset.emoji,l=btn.dataset.label;if(s==='travel'){closeM('m-status');openTravelModal();}else if(s==='appt'){closeM('m-status');openApptModal(pickerCtx.mid,pickerCtx.date);}else selStatus(s,e,l);};});
   document.getElementById('btn-del-status').onclick=deleteStatus;
   document.getElementById('btn-cancel-status').onclick=function(){closeM('m-status');};
@@ -557,6 +569,8 @@ function renderHome(){
   var bb=document.getElementById('bday-banner');
   if(todayBdays.length){document.getElementById('bday-banner-names').textContent=todayBdays.map(function(b){return b.name;}).join(', ');bb.style.display='flex';if(Notification.permission==='granted'){todayBdays.forEach(function(b){try{new Notification('🎂 '+b.name+' hat Geburtstag!',{body:'Herzlichen Glückwunsch! 🎉'});}catch(e){}});}}else{bb.style.display='none';}
   renderActs();
+  // Load appts for today then render
+  loadAppts([td]).then(renderHeuteTermine);
 }
 
 function renderEmmaToday(date){
@@ -623,21 +637,25 @@ function _renderWeekGrid(){
         var info=s?SM[s.status]:null;var wc=s?WC[s.status]:'';
         var cell=document.createElement('div');cell.className='wkc '+wc+(isT?' today':'')+(isPast?' past':'')+(isW&&!s?' wknd':'');
         if(isT)cell.style.boxShadow='0 0 0 2px var(--ac)';
-        // Status icon + vacation name + appt times
+        // New design: color border = member color, small flag icon top-right, appt count in cell
         var appts=(apptData[(m.id+'_'+date)]||[]);
         cell.style.position='relative';
-        var statusIcon='<span style="font-size:18px;line-height:1">'+(info?info.e:(isW?'':'<span style="font-size:16px;color:var(--t3)">+</span>'))+'</span>';
-        var vacNote=s&&s.status==='vacation'&&s.note?'<span style="font-size:8px;color:var(--gr);font-weight:600;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 2px">'+s.note+'</span>':'';
+        // Member color border
+        if(s){cell.style.borderColor=m.color+'88';cell.style.background=m.color+'10';}
+        // Small status icon top-right
+        var flagIcon=info?'<span style="position:absolute;top:3px;right:3px;font-size:10px;line-height:1">'+info.e+'</span>':'';
+        // Vacation name
+        var vacNote=s&&s.status==='vacation'&&s.note?'<span style="font-size:7px;color:'+m.color+';font-weight:600;line-height:1.2;text-align:center;padding:0 2px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block">'+s.note+'</span>':'';
+        // Appt count or list
         var apptHtml='';
-        if(appts.length){
-          apptHtml='<div style="width:100%;padding:0 2px">';
-          appts.slice(0,2).forEach(function(a){
-            apptHtml+='<div style="font-size:7px;color:#ff6496;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3">'+(a.time!=='00:00'?a.time.slice(0,5)+' ':'')+a.description+'</div>';
-          });
-          if(appts.length>2)apptHtml+='<div style="font-size:7px;color:var(--t3)">+'+( appts.length-2)+' mehr</div>';
-          apptHtml+='</div>';
+        if(appts.length===1){
+          apptHtml='<div style="font-size:7px;color:'+m.color+';line-height:1.2;text-align:center;padding:0 2px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(appts[0].time_from&&appts[0].time_from!=='00:00'?appts[0].time_from.slice(0,5)+' ':'')+appts[0].description+'</div>';
+        } else if(appts.length>1){
+          apptHtml='<div style="font-size:9px;font-weight:700;color:'+m.color+'">'+appts.length+'</div><div style="font-size:6px;color:var(--t3)">Termine</div>';
         }
-        cell.innerHTML=statusIcon+vacNote+apptHtml;
+        // Main content
+        var mainContent=s?'':isW?'':'<span style="font-size:16px;color:var(--t3)">+</span>';
+        cell.innerHTML=flagIcon+'<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;width:100%;height:100%;padding-top:'+(info?'6px':'0')+'">'+mainContent+vacNote+apptHtml+'</div>';
         (function(mid,dt,st){cell.onclick=function(){if(st&&st.status==='appt'){openApptModal(mid,dt);}else{openPicker(mid,dt);}};})(m.id,date,getSt(m.id,date));
         row.appendChild(cell);
       });
@@ -869,6 +887,85 @@ async function saveBday(){var name=document.getElementById('bday-name').value.tr
 async function deleteBday(){var id=document.getElementById('bday-edit-id').value;if(!id||!confirm('Geburtstag löschen?'))return;closeM('m-bday');try{await api('birthdays?id=eq.'+id,{method:'DELETE'});await loadBdays();renderBdays();renderWeek();toast('✕','Gelöscht','Geburtstag entfernt.');}catch(e){console.error(e);}}
 
 
+
+// ═══════════════════════════════════
+// TERMINE OVERVIEW
+// ═══════════════════════════════════
+function renderTermineScreen() {
+  var td = today();
+  var weekDates = getWeek(0).filter(function(d){return !isWknd(d);});
+  var t=new Date(); var monthDates=get4Weeks();
+
+  // TODAY
+  var todaySec = document.getElementById('termine-today-sec');
+  var todayHtml = '<div class="sectitle">Heute</div>';
+  var todayItems = [];
+  S.members.forEach(function(m){
+    var appts=(apptData[m.id+'_'+td]||[]);
+    appts.forEach(function(a){todayItems.push({m:m,a:a,date:td});});
+  });
+  if(todayItems.length){
+    todayItems.sort(function(a,b){return (a.a.time_from||a.a.time||'').localeCompare(b.a.time_from||b.a.time||'');});
+    todayHtml+=todayItems.map(function(x){return termineCard(x.m,x.a,x.date);}).join('');
+  } else { todayHtml+='<div class="empty" style="padding:8px 0">Keine Termine heute</div>'; }
+  todaySec.innerHTML=todayHtml;
+
+  // THIS WEEK
+  var weekSec = document.getElementById('termine-week-sec');
+  var weekHtml='<div class="sectitle">Diese Woche</div>';
+  var weekItems=[];
+  weekDates.filter(function(d){return d!==td;}).forEach(function(date){
+    S.members.forEach(function(m){
+      var appts=(apptData[m.id+'_'+date]||[]);
+      appts.forEach(function(a){weekItems.push({m:m,a:a,date:date});});
+    });
+  });
+  if(weekItems.length){weekHtml+=weekItems.map(function(x){return termineCard(x.m,x.a,x.date);}).join('');}
+  else{weekHtml+='<div class="empty" style="padding:8px 0">Keine weiteren Termine diese Woche</div>';}
+  weekSec.innerHTML=weekHtml;
+
+  // THIS MONTH
+  var monthSec = document.getElementById('termine-month-sec');
+  var monthHtml='<div class="sectitle">Diesen Monat</div>';
+  var monthItems=[];
+  monthDates.filter(function(d){return d>addDays(td,7);}).forEach(function(date){
+    S.members.forEach(function(m){
+      var appts=(apptData[m.id+'_'+date]||[]);
+      appts.forEach(function(a){monthItems.push({m:m,a:a,date:date});});
+    });
+  });
+  if(monthItems.length){monthHtml+=monthItems.map(function(x){return termineCard(x.m,x.a,x.date);}).join('');}
+  else{monthHtml+='<div class="empty" style="padding:8px 0">Keine weiteren Termine diesen Monat</div>';}
+  monthSec.innerHTML=monthHtml;
+}
+
+function termineCard(m,a,date){
+  var ph=getPhoto(m.id);
+  var avHtml=ph?'<div style="width:28px;height:28px;border-radius:50%;background-image:url('+ph+');background-size:cover;background-position:center;border:2px solid '+m.color+';flex-shrink:0"></div>':'<div style="width:28px;height:28px;border-radius:50%;background:'+m.color+'22;color:'+m.color+';border:2px solid '+m.color+';display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">'+m.name[0]+'</div>';
+  var timeStr=(a.time_from&&a.time_from!=='00:00')?a.time_from.slice(0,5)+(a.time_to?' – '+a.time_to.slice(0,5):''):'';
+  var d=new Date(date+'T12:00:00');
+  var dateStr=d.toLocaleDateString('de-DE',{weekday:'short',day:'numeric',month:'short'});
+  return '<div style="background:var(--s2);border:1px solid '+m.color+'44;border-radius:var(--rsm);padding:10px 12px;margin-bottom:7px;display:flex;gap:10px;align-items:center">'
+    +avHtml
+    +'<div style="flex:1"><div style="font-size:13px;font-weight:600">'+a.description+'</div>'
+    +'<div style="font-size:12px;color:var(--t3);margin-top:2px">'+dateStr+(timeStr?' · '+timeStr:'')+'</div></div>'
+    +'</div>';
+}
+
+function renderHeuteTermine() {
+  var td=today();
+  var sec=document.getElementById('heute-termine-sec');
+  if(!sec)return;
+  var items=[];
+  S.members.forEach(function(m){
+    var appts=(apptData[m.id+'_'+td]||[]);
+    appts.forEach(function(a){items.push({m:m,a:a});});
+  });
+  if(!items.length){sec.innerHTML='';return;}
+  items.sort(function(a,b){return (a.a.time_from||a.a.time||'').localeCompare(b.a.time_from||b.a.time||'');});
+  sec.innerHTML='<div class="sectitle">Termine heute</div>'+items.map(function(x){return termineCard(x.m,x.a,today());}).join('');
+}
+
 // ═══════════════════════════════════
 // APPOINTMENTS (Termine)
 // ═══════════════════════════════════
@@ -899,6 +996,7 @@ function openApptModal(mid, date) {
   document.getElementById('m-appt-title').textContent = '📌 Termine – ' + (m ? m.name : '–');
   document.getElementById('m-appt-sub').textContent = fmtLong(date);
   document.getElementById('appt-time').value = '';
+  if(document.getElementById('appt-time-to'))document.getElementById('appt-time-to').value='';
   document.getElementById('appt-desc').value = '';
   renderApptList();
   document.getElementById('m-appt').classList.add('on');
@@ -945,7 +1043,7 @@ async function saveAppt() {
       S.statuses[mid+'_'+date]={member_id:mid,date:date,status:'appt'};
     }
     renderWeek(); renderHome();
-    toast('📌','Termin gespeichert',time ? time+' Uhr – '+desc : desc);
+    var timeLabel=timeFrom?(timeFrom+(timeTo?' – '+timeTo:''))+' Uhr':'' ; toast('📌','Termin gespeichert',timeLabel?timeLabel+' – '+desc:desc);
   } catch(e) { toast('❌','Fehler','Bitte appointments-Tabelle in Supabase anlegen.'); console.error(e); }
 }
 
@@ -1110,6 +1208,10 @@ function go(name){
   document.getElementById('fab-vac').style.display=(name==='vacation')?'flex':'none';
   document.getElementById('fab-bday').style.display=(name==='birthdays')?'flex':'none';
   if(name==='home')renderHome();
+  if(name==='termine'){
+    var allD=get4Weeks(); var wd=getWeek(0);
+    loadAppts(allD.concat(wd)).then(renderTermineScreen);
+  }
   if(name==='week'){
     renderWeek();
     loadAll().then(function(){loadBdays().then(function(){syncVacationsToStatuses().then(renderWeek);});});
