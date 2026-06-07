@@ -441,7 +441,7 @@ async function init(){
   document.getElementById('btn-create').onclick=createHH;
   document.getElementById('btn-join').onclick=joinHH;
   document.getElementById('btn-save-appt').onclick=saveAppt;
-  document.getElementById('btn-cancel-appt').onclick=function(){closeM('m-appt');};
+  document.getElementById('btn-cancel-appt').onclick=function(){closeM('m-appt');apptCtx.editId=null;document.getElementById('btn-save-appt').textContent='+ Hinzufügen';};
   var saved=localStorage.getItem('fs_me');
   if(saved){S.me=JSON.parse(saved);var ph=localStorage.getItem('fs_photo_'+S.me.id);if(ph)S.me.photo=ph;await loadAll();showApp();}
   else{hideLoading();document.getElementById('setup').style.display='flex';}
@@ -989,11 +989,53 @@ function termineCard(m,a,date){
   var timeStr=(a.time_from&&a.time_from!=='00:00')?a.time_from.slice(0,5)+(a.time_to?' – '+a.time_to.slice(0,5):''):'';
   var d=new Date(date+'T12:00:00');
   var dateStr=d.toLocaleDateString('de-DE',{weekday:'short',day:'numeric',month:'short'});
-  return '<div style="background:var(--s2);border:1px solid '+m.color+'44;border-radius:var(--rsm);padding:10px 12px;margin-bottom:7px;display:flex;gap:10px;align-items:center">'
-    +avHtml
+  var card = document.createElement('div');
+  card.style.cssText='background:var(--s2);border:1px solid '+m.color+'44;border-radius:var(--rsm);padding:10px 12px;margin-bottom:7px;display:flex;gap:10px;align-items:center;cursor:pointer';
+  card.innerHTML=avHtml
     +'<div style="flex:1"><div style="font-size:13px;font-weight:600">'+a.description+'</div>'
     +'<div style="font-size:12px;color:var(--t3);margin-top:2px">'+dateStr+(timeStr?' · '+timeStr:'')+'</div></div>'
+    +'<div style="display:flex;gap:6px">'
+    +'<button class="tc-edit" data-mid="'+m.id+'" data-date="'+date+'" data-aid="'+a.id+'" style="background:var(--s3);border:1px solid var(--b2);border-radius:6px;color:var(--t2);font-size:11px;cursor:pointer;padding:4px 8px;font-family:var(--fb)">Bearbeiten</button>'
+    +'<button class="tc-del" data-mid="'+m.id+'" data-date="'+date+'" data-aid="'+a.id+'" style="background:var(--re2);border:1px solid rgba(224,85,85,0.2);border-radius:6px;color:var(--re);font-size:11px;cursor:pointer;padding:4px 8px;font-family:var(--fb)">✕</button>'
     +'</div>';
+  var wrapper = document.createElement('div');
+  wrapper.innerHTML = card.outerHTML;
+  var el = wrapper.firstChild;
+  el.querySelector('.tc-edit').onclick = function(e){e.stopPropagation();var b=this;openApptModalEdit(b.dataset.mid,b.dataset.date,b.dataset.aid);};
+  el.querySelector('.tc-del').onclick = function(e){e.stopPropagation();var b=this;deleteApptById(b.dataset.aid,b.dataset.mid,b.dataset.date);};
+  return el.outerHTML;
+}
+
+async function openApptModalEdit(mid, date, apptId) {
+  var key = mid+'_'+date;
+  if(!apptData[key]) await loadAppts([date]);
+  var appt = (apptData[key]||[]).find(function(a){return a.id===apptId;});
+  if(!appt) return;
+  apptCtx = {mid:mid, date:date, editId:apptId};
+  var m=byId(mid);
+  document.getElementById('m-appt-title').textContent='📌 Termin bearbeiten';
+  document.getElementById('m-appt-sub').textContent=(m?m.name:'–')+' · '+fmtLong(date);
+  document.getElementById('appt-time').value = appt.time_from||appt.time||'';
+  if(document.getElementById('appt-time-to'))document.getElementById('appt-time-to').value = appt.time_to||'';
+  document.getElementById('appt-desc').value = appt.description||'';
+  document.getElementById('btn-save-appt').textContent='Speichern ✓';
+  renderApptList();
+  document.getElementById('m-appt').classList.add('on');
+}
+
+async function deleteApptById(apptId, mid, date) {
+  if(!confirm('Termin löschen?')) return;
+  try {
+    await api('appointments?id=eq.'+apptId, {method:'DELETE'});
+    var key=mid+'_'+date;
+    apptData[key]=(apptData[key]||[]).filter(function(a){return a.id!==apptId;});
+    renderWeek(); renderHome();
+    // Re-render termine screen if open
+    if(document.getElementById('screen-termine').classList.contains('on')){
+      var allD=get4Weeks();loadAppts(allD.concat(getWeek(0))).then(renderTermineScreen);
+    }
+    toast('✕','Gelöscht','Termin entfernt.');
+  } catch(e){toast('❌','Fehler','Bitte nochmal versuchen.');console.error(e);}
 }
 
 function renderHeuteTermine() {
@@ -1050,20 +1092,37 @@ function renderApptList() {
   var key = apptCtx.mid + '_' + apptCtx.date;
   var appts = apptData[key] || [];
   var cont = document.getElementById('appt-list');
-  if (!appts.length) { cont.innerHTML = '<div style="font-size:13px;color:var(--t3);padding:4px 0">Noch keine Termine</div>'; return; }
+  if (!appts.length) { cont.innerHTML = '<div style="font-size:13px;color:var(--t3);padding:8px 0">Noch keine Termine</div>'; return; }
   cont.innerHTML = '';
   appts.forEach(function(a) {
     var row = document.createElement('div');
-    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--b1)';
-    row.innerHTML = '<span style="font-size:13px;font-weight:600;color:var(--ac2);min-width:38px">'+a.time+'</span>'
-      + '<span style="font-size:13px;flex:1">'+a.description+'</span>';
-    var del = document.createElement('button');
-    del.style.cssText = 'background:transparent;border:none;color:var(--re);font-size:16px;cursor:pointer;padding:0 4px';
-    del.textContent = '✕';
-    (function(id){ del.onclick = function(){ deleteAppt(id); }; })(a.id);
-    row.appendChild(del);
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--b1)';
+    var timeStr = (a.time_from&&a.time_from!=='00:00') ? a.time_from.slice(0,5)+(a.time_to?' – '+a.time_to.slice(0,5):'') : '';
+    row.innerHTML = '<div style="flex:1">'
+      + (timeStr?'<div style="font-size:11px;font-weight:600;color:var(--ac2);margin-bottom:2px">'+timeStr+' Uhr</div>':'')
+      + '<div style="font-size:13px">'+a.description+'</div></div>';
+    // Edit button
+    var editBtn = document.createElement('button');
+    editBtn.style.cssText = 'background:var(--s3);border:1px solid var(--b2);border-radius:6px;color:var(--t2);font-size:11px;cursor:pointer;padding:4px 8px;font-family:var(--fb)';
+    editBtn.textContent = 'Bearbeiten';
+    (function(appt){ editBtn.onclick = function(){ openEditAppt(appt); }; })(a);
+    // Delete button
+    var delBtn = document.createElement('button');
+    delBtn.style.cssText = 'background:var(--re2);border:1px solid rgba(224,85,85,0.2);border-radius:6px;color:var(--re);font-size:11px;cursor:pointer;padding:4px 8px;font-family:var(--fb)';
+    delBtn.textContent = '✕';
+    (function(id){ delBtn.onclick = function(){ deleteAppt(id); }; })(a.id);
+    row.appendChild(editBtn);
+    row.appendChild(delBtn);
     cont.appendChild(row);
   });
+}
+
+function openEditAppt(appt) {
+  document.getElementById('appt-time').value = appt.time_from || appt.time || '';
+  if(document.getElementById('appt-time-to')) document.getElementById('appt-time-to').value = appt.time_to || '';
+  document.getElementById('appt-desc').value = appt.description || '';
+  apptCtx.editId = appt.id;
+  document.getElementById('btn-save-appt').textContent = 'Speichern ✓';
 }
 
 async function saveAppt() {
