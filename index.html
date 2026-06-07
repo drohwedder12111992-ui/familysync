@@ -230,7 +230,10 @@ body{background:var(--bg);color:var(--t1);font-family:var(--fb);height:100dvh;ov
     </div>
     <div class="sec" style="margin-top:10px">
       <div class="card">
-        <div style="display:flex;align-items:center;gap:7px;margin-bottom:10px"><span style="font-size:18px">🐕</span><span style="font-size:14px;font-weight:600">Emma heute</span></div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px" id="emma-today-header">
+          <div id="emma-home-av" style="width:36px;height:36px;border-radius:50%;background:#f0a05022;border:2px solid #f0a050;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;overflow:hidden">🐕</div>
+          <span style="font-size:14px;font-weight:600">Emma heute</span>
+        </div>
         <div id="emma-today"><div class="empty" style="padding:6px 0">Lädt…</div></div>
       </div>
     </div>
@@ -273,6 +276,20 @@ body{background:var(--bg);color:var(--t1);font-family:var(--fb);height:100dvh;ov
       <div class="prhh" id="pr-hh">–</div>
       <div class="invcard"><div class="invlabel">Einladungscode für deinen Partner</div><div class="invcode" id="inv-code">––––––</div><div class="invhint">Teile diesen Code. Dein Partner gibt ihn beim ersten Start ein.</div></div>
       <div class="invcard"><div class="invlabel">Meine Farbe ändern</div><div class="cdots" id="cr-profile" style="margin-top:8px"></div></div>
+      <div class="invcard">
+        <div class="invlabel">Emma's Profilbild</div>
+        <div style="display:flex;align-items:center;gap:14px;margin-top:8px">
+          <div style="position:relative;width:56px;height:56px;flex-shrink:0">
+            <input type="file" id="emma-photo-input" accept="image/*" style="position:absolute;inset:0;opacity:0;cursor:pointer;z-index:2;border-radius:50%">
+            <div id="emma-av" style="width:56px;height:56px;border-radius:50%;background:#f0a05022;border:3px solid #f0a050;display:flex;align-items:center;justify-content:center;font-size:22px;overflow:hidden">🐕</div>
+            <div style="position:absolute;bottom:0;right:0;width:18px;height:18px;border-radius:50%;background:var(--ac);border:2px solid var(--bg);display:flex;align-items:center;justify-content:center;font-size:9px;z-index:1">📷</div>
+          </div>
+          <div>
+            <div style="font-size:14px;font-weight:600">Emma</div>
+            <div style="font-size:12px;color:var(--t2);margin-top:2px">Tippe auf das Bild um ein Foto hinzuzufügen</div>
+          </div>
+        </div>
+      </div>
       <button class="btn" id="btn-copy-code">Code kopieren 📋</button>
       <button class="logoutbtn" id="btn-logout">Abmelden</button>
     </div>
@@ -514,6 +531,8 @@ function setupEventListeners(){
   document.getElementById('btn-copy-code').onclick=copyCode;
   document.getElementById('btn-logout').onclick=logout;
   document.getElementById('photo-input').onchange=handlePhoto;
+  var emmaInput=document.getElementById('emma-photo-input');
+  if(emmaInput) emmaInput.onchange=handleEmmaPhoto;
   document.getElementById('btn-crop-save').onclick=saveCroppedPhoto;
   document.getElementById('btn-crop-cancel').onclick=function(){document.getElementById('m-crop').style.display='none';document.getElementById('photo-input').value='';};
   document.getElementById('btn-push-yes').onclick=reqPush;
@@ -564,6 +583,12 @@ function renderHome(){
   var ca=document.getElementById('conflict-area');
   var allAway=S.members.length>1&&S.members.every(function(m){var s=getSt(m.id,td);return s&&(s.status==='travel'||s.status==='vacation');});
   ca.innerHTML=allAway?'<div class="alert"><span style="font-size:17px">⚠️</span><div class="alert-t"><strong>Alle unterwegs</strong> – bitte Emma-Transfer prüfen.</div></div>':'';
+  var emPh=localStorage.getItem('fs_photo_emma');
+  var emAv=document.getElementById('emma-home-av');
+  if(emAv){
+    if(emPh){emAv.innerHTML='<img src="'+emPh+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%">';}
+    else{emAv.innerHTML='🐕';}
+  }
   if(!isWknd(td)){renderEmmaToday(td);}else{document.getElementById('emma-today').innerHTML='<div class="empty" style="padding:6px 0">Wochenende – kein Transfer nötig 🐕</div>';}
   var todayBdays=bdayData.filter(function(b){var d=new Date(b.date+'T12:00:00'),n=new Date(td+'T12:00:00');return d.getDate()===n.getDate()&&d.getMonth()===n.getMonth();});
   var bb=document.getElementById('bday-banner');
@@ -577,6 +602,7 @@ function renderEmmaToday(date){
   var dog=S.dogs[date]||{};
   var m=dog.morning_member_id?byId(dog.morning_member_id):null;
   var e=dog.evening_member_id?byId(dog.evening_member_id):null;
+  var emmaPh=localStorage.getItem('fs_photo_emma');
   var cont=document.getElementById('emma-today');cont.innerHTML='';
   function makeRow(label, sub, person, slot){
     var row=document.createElement('div');row.className='erow';
@@ -672,12 +698,20 @@ function _renderWeekGrid(){
       // Morning half - show profile photo
       var mh=document.createElement('div');mh.className='emma-half'+(isT?' today':'');
       if(dm){var dmPh=getPhoto(dm.id);mh.style.cssText='background:'+(dmPh?'transparent':dm.color+'25')+';border-color:'+dm.color+'55';mh.innerHTML=dmPh?'<div style="width:18px;height:18px;border-radius:50%;background-image:url('+dmPh+');background-size:cover;background-position:center;border:1.5px solid '+dm.color+'"></div>':'<div style="width:18px;height:18px;border-radius:50%;background:'+dm.color+'22;color:'+dm.color+';border:1.5px solid '+dm.color+';display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700">'+dm.name[0]+'</div>';}
-      else{mh.innerHTML='<span style="font-size:10px;color:var(--t3)">↑</span>';}
+      else{
+        var emmaPh=localStorage.getItem('fs_photo_emma');
+        if(emmaPh){mh.innerHTML='<div style="width:18px;height:18px;border-radius:50%;background-image:url('+emmaPh+');background-size:cover;background-position:center;opacity:0.3"></div>';}
+        else{mh.innerHTML='<span style="font-size:10px;color:var(--t3)">↑</span>';}
+      }
       (function(dt){mh.onclick=function(){openEmma(dt,'morning');};})(date);
       // Evening half - show profile photo
       var eh=document.createElement('div');eh.className='emma-half'+(isT?' today':'');
       if(de){var dePh=getPhoto(de.id);eh.style.cssText='background:'+(dePh?'transparent':de.color+'25')+';border-color:'+de.color+'55';eh.innerHTML=dePh?'<div style="width:18px;height:18px;border-radius:50%;background-image:url('+dePh+');background-size:cover;background-position:center;border:1.5px solid '+de.color+'"></div>':'<div style="width:18px;height:18px;border-radius:50%;background:'+de.color+'22;color:'+de.color+';border:1.5px solid '+de.color+';display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700">'+de.name[0]+'</div>';}
-      else{eh.innerHTML='<span style="font-size:10px;color:var(--t3)">↓</span>';}
+      else{
+        var emmaPh2=localStorage.getItem('fs_photo_emma');
+        if(emmaPh2){eh.innerHTML='<div style="width:18px;height:18px;border-radius:50%;background-image:url('+emmaPh2+');background-size:cover;background-position:center;opacity:0.3"></div>';}
+        else{eh.innerHTML='<span style="font-size:10px;color:var(--t3)">↓</span>';}
+      }
       (function(dt){eh.onclick=function(){openEmma(dt,'evening');};})(date);
       wrap.appendChild(mh);wrap.appendChild(eh);erow.appendChild(wrap);
     });
@@ -1093,6 +1127,35 @@ async function syncVacationsToStatuses() {
 }
 
 
+
+// ── EMMA PHOTO ──
+function loadEmmaPhoto() {
+  var ph = localStorage.getItem('fs_photo_emma');
+  var av = document.getElementById('emma-av');
+  if (!av) return;
+  if (ph) {
+    av.innerHTML = '<img src="'+ph+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%">';
+  } else {
+    av.innerHTML = '🐕';
+    av.style.fontSize = '22px';
+  }
+}
+
+function handleEmmaPhoto(e) {
+  var file = e.target.files[0]; if(!file) return;
+  if(file.size > 5*1024*1024){toast('⚠️','Zu groß','Bitte ein Bild unter 5MB wählen.');return;}
+  var reader = new FileReader();
+  reader.onload = function(ev) {
+    localStorage.setItem('fs_photo_emma', ev.target.result);
+    loadEmmaPhoto();
+    // Also update Emma cells in week view and home
+    renderWeek();
+    renderHome();
+    toast('📷','Emmas Foto gespeichert!','Emma sieht jetzt noch süßer aus 🐕');
+  };
+  reader.readAsDataURL(file);
+}
+
 // ── SWIPE NAVIGATION ──
 function initSwipe(el, onLeft, onRight) {
   var startX=0, startY=0, moved=false;
@@ -1178,6 +1241,7 @@ function renderProfile(){
   }
   document.getElementById('pr-name').textContent=S.me.name;document.getElementById('pr-hh').textContent=S.hh?S.hh.name:'–';document.getElementById('inv-code').textContent=S.hh?S.hh.invite_code:'––––––';
   buildColorPickers();document.querySelectorAll('#cr-profile .cdot').forEach(function(d){d.classList.toggle('on',d.dataset.c===S.me.color);});
+  loadEmmaPhoto();
 }
 function updAvatars(){
   if(!S.me)return;
