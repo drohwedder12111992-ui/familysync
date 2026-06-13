@@ -340,6 +340,18 @@ body{background:var(--bg);color:var(--t1);font-family:var(--fb);height:100dvh;ov
 .es-stat{flex:1;background:var(--s2);border:1px solid var(--b2);border-radius:var(--rsm);padding:11px;text-align:center;}
 .es-stat .n{font-family:var(--fd);font-size:22px;font-weight:300;}
 .es-stat .l{font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin-top:2px;}
+/* ── ESSEN: Rezept-Editor & Web-Import ── */
+.r-edit{position:absolute;top:4px;right:6px;font-size:12px;color:#fff;background:rgba(0,0,0,0.4);width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;}
+.recipe-actions{display:flex;gap:8px;margin:4px 13px 10px;}
+.recipe-actions .btn{margin:0;flex:1;background:var(--s2);border:1px solid var(--b2);color:var(--t1);font-size:14px;padding:11px;}
+.ing-row{display:flex;gap:5px;margin-bottom:6px;align-items:center;}
+.ing-row .inp{padding:8px 9px;font-size:13px;margin:0;}
+.ing-row .ing-n{flex:2;min-width:0;}
+.ing-row .ing-q{width:50px;flex-shrink:0;text-align:center;}
+.ing-row .ing-u{width:52px;flex-shrink:0;}
+.ing-row select{background:var(--s3);border:1px solid var(--b2);border-radius:var(--rsm);color:var(--t1);font-family:var(--fb);font-size:11px;padding:8px 2px;width:62px;flex-shrink:0;}
+.ing-row .ing-x{color:var(--re);font-size:16px;cursor:pointer;padding:4px;flex-shrink:0;}
+.im-ing{font-size:13px;color:var(--t2);padding:4px 0;border-bottom:1px solid var(--b1);}
 </style>
 </head>
 <body>
@@ -643,6 +655,34 @@ body{background:var(--bg);color:var(--t1);font-family:var(--fb);height:100dvh;ov
   <button class="mcancel" style="margin-top:8px;color:var(--re);background:var(--re2);border-color:rgba(224,85,85,0.2)" id="btn-del-bday">Löschen</button>
   <button class="mcancel" style="margin-top:8px" id="btn-cancel-bday">Abbrechen</button></div>
 </div>
+<div class="overlay" id="m-recipe">
+  <div class="modal"><div class="mhandle"></div>
+    <div class="mtitle" id="m-recipe-title">Neues Rezept</div>
+    <div class="msub">Name, Zeit und Zutaten – wird in eurer Bibliothek gespeichert.</div>
+    <div class="flabel">Name</div><input class="inp" id="rc-name" placeholder="z.B. Lasagne">
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <div style="width:70px"><div class="flabel">Emoji</div><input class="inp" id="rc-emoji" maxlength="2" placeholder="🍝"></div>
+      <div style="flex:1"><div class="flabel">Min.</div><input class="inp" id="rc-time" type="number" inputmode="numeric" placeholder="30"></div>
+      <div style="flex:1"><div class="flabel">Pers.</div><input class="inp" id="rc-serves" type="number" inputmode="numeric" placeholder="4"></div>
+    </div>
+    <div class="flabel" style="margin-top:12px">Zutaten</div>
+    <div id="rc-ings"></div>
+    <button class="dobtn" id="rc-add-ing" style="margin-top:4px">＋ Zutat hinzufügen</button>
+    <button class="btn" id="rc-save">Speichern ✓</button>
+    <button class="mcancel" id="rc-del" style="margin-top:8px;color:var(--re);background:var(--re2);border-color:rgba(224,85,85,0.2)">Rezept löschen</button>
+    <button class="mcancel" id="btn-cancel-recipe" style="margin-top:8px">Abbrechen</button>
+  </div>
+</div>
+<div class="overlay" id="m-import">
+  <div class="modal"><div class="mhandle"></div>
+    <div class="mtitle">Rezept aus dem Web</div>
+    <div class="msub">Link einer Rezeptseite einfügen (z.B. von Chefkoch). Name und Zutaten werden automatisch ausgelesen.</div>
+    <input class="inp" id="im-url" placeholder="https://www.chefkoch.de/rezepte/...">
+    <button class="btn" id="im-fetch">🔍 Rezept laden</button>
+    <div id="im-result" style="margin-top:8px"></div>
+    <button class="mcancel" id="btn-cancel-import" style="margin-top:10px">Schließen</button>
+  </div>
+</div>
 <div class="overlay" id="m-meal">
   <div class="modal"><div class="mhandle"></div>
     <div class="mtitle" id="m-meal-title">Gericht wählen</div>
@@ -893,6 +933,12 @@ function buildColorPickers(){
 
 function setupEventListeners(){
   document.querySelectorAll('.seg-btn').forEach(function(b){b.onclick=function(){ES.seg=b.dataset.seg;renderEssen();};});
+  (function(){var x=document.getElementById('rc-add-ing');if(x)x.onclick=function(){addIngRow({});};})();
+  (function(){var x=document.getElementById('rc-save');if(x)x.onclick=saveRecipe;})();
+  (function(){var x=document.getElementById('rc-del');if(x)x.onclick=deleteRecipe;})();
+  (function(){var x=document.getElementById('btn-cancel-recipe');if(x)x.onclick=function(){closeM('m-recipe');};})();
+  (function(){var x=document.getElementById('im-fetch');if(x)x.onclick=doImport;})();
+  (function(){var x=document.getElementById('btn-cancel-import');if(x)x.onclick=function(){closeM('m-import');};})();
   (function(){var _b=document.getElementById('btn-cancel-meal');if(_b)_b.onclick=function(){closeM('m-meal');};})();
   (function(){var _a=document.getElementById('av-essen');if(_a)_a.addEventListener('click',function(){go('profile');});})();
   document.getElementById('btn-create').onclick=createHH;
@@ -2556,9 +2602,10 @@ function renderPlan(){
   });
   h+='<div class="sectitle" style="padding:16px 17px 0">Rezept-Bibliothek</div>';
   h+='<div style="margin:4px 13px 10px"><button class="btn" id="btn-gen" style="margin:0">🛒 Einkaufsliste erzeugen</button></div>';
+  h+='<div class="recipe-actions"><button class="btn" id="btn-add-recipe">＋ Eigenes</button><button class="btn" id="btn-import-recipe">🌐 Aus Web</button></div>';
   h+='<div class="rgrid">';
   ES.recipes.forEach(function(r){
-    h+='<div class="recipe"><div class="thumb">'+(r.emoji||'🍽️')+'</div><div class="rb"><h4>'+r.name+'</h4>'
+    h+='<div class="recipe"><div class="thumb" style="position:relative">'+(r.emoji||'🍽️')+'<span class="r-edit" data-edit="'+r.id+'">✎</span></div><div class="rb"><h4>'+r.name+'</h4>'
       +'<div class="rm">⏱ '+r.time_min+' Min · '+r.serves+' Pers.</div>'
       +'<button class="radd" data-recipe="'+r.id+'">+ Einplanen</button></div></div>';
   });
@@ -2593,6 +2640,9 @@ function bindEssen(){
   document.querySelectorAll('#essen-view [data-recipe]').forEach(function(b){b.onclick=function(){openDayPicker(b.dataset.recipe);};});
   document.querySelectorAll('#essen-view [data-rm]').forEach(function(b){b.onclick=async function(){await api('meal_plan?id=eq.'+b.dataset.rm,{method:'DELETE'});await loadEssen();renderEssen();};});
   document.querySelectorAll('#essen-view [data-toggle]').forEach(function(b){b.onclick=function(){toggleGrocery(b.dataset.toggle);};});
+  var ar=document.getElementById('btn-add-recipe');if(ar)ar.onclick=function(){openRecipeEditor(null);};
+  var ir=document.getElementById('btn-import-recipe');if(ir)ir.onclick=openImportModal;
+  document.querySelectorAll('#essen-view [data-edit]').forEach(function(b){b.onclick=function(e){e.stopPropagation();openRecipeEditor(b.dataset.edit);};});
   var g=document.getElementById('btn-gen');if(g)g.onclick=generateGroceries;
   var a=document.getElementById('btn-es-add');if(a)a.onclick=addGrocery;
   var inp=document.getElementById('es-new');if(inp)inp.onkeydown=function(e){if(e.key==='Enter')addGrocery();};
@@ -2668,6 +2718,134 @@ async function seedRecipes(){
   await api('recipes',{method:'POST',body:JSON.stringify(seed)});
   var r=await api('recipes?household_id=eq.'+S.hh.id+'&select=*&order=created_at');ES.recipes=await r.json();
 }
+
+// ── Rezept-Editor (eigene Lieblingsgerichte) ──
+var ES_EDIT_ID=null;
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+function ingRowHtml(ing){
+  ing=ing||{n:'',q:'',u:'',c:'Sonstiges'};
+  var opts=ES_CATS.map(function(c){return '<option'+(c===ing.c?' selected':'')+'>'+c+'</option>';}).join('');
+  return '<div class="ing-row">'
+    +'<input class="inp ing-n" placeholder="Zutat" value="'+esc(ing.n)+'">'
+    +'<input class="inp ing-q" placeholder="Menge" value="'+((ing.q!==undefined&&ing.q!=='')?ing.q:'')+'">'
+    +'<input class="inp ing-u" placeholder="Einh." value="'+esc(ing.u||'')+'">'
+    +'<select>'+opts+'</select>'
+    +'<span class="ing-x">✕</span></div>';
+}
+function bindIngRows(){document.querySelectorAll('#rc-ings .ing-x').forEach(function(x){x.onclick=function(){x.parentNode.parentNode.removeChild(x.parentNode);};});}
+function addIngRow(ing){document.getElementById('rc-ings').insertAdjacentHTML('beforeend',ingRowHtml(ing));bindIngRows();}
+function openRecipeEditor(id,prefill){
+  ES_EDIT_ID=id||null;
+  var r= id?essenRecipe(id):(prefill||{name:'',emoji:'🍽️',time_min:30,serves:4,ingredients:[{}]});
+  document.getElementById('m-recipe-title').textContent=id?'Rezept bearbeiten':'Neues Rezept';
+  document.getElementById('rc-name').value=r.name||'';
+  document.getElementById('rc-emoji').value=r.emoji||'🍽️';
+  document.getElementById('rc-time').value=r.time_min||'';
+  document.getElementById('rc-serves').value=r.serves||'';
+  var c=document.getElementById('rc-ings');c.innerHTML='';
+  var ings=(r.ingredients&&r.ingredients.length)?r.ingredients:[{}];
+  ings.forEach(function(i){c.insertAdjacentHTML('beforeend',ingRowHtml(i));});
+  bindIngRows();
+  document.getElementById('rc-del').style.display=id?'block':'none';
+  openM('m-recipe');
+}
+function collectRecipe(){
+  var ings=[];
+  document.querySelectorAll('#rc-ings .ing-row').forEach(function(row){
+    var n=row.querySelector('.ing-n').value.trim();if(!n)return;
+    var q=parseFloat((row.querySelector('.ing-q').value||'').replace(',','.'));if(isNaN(q))q=1;
+    var u=row.querySelector('.ing-u').value.trim()||'Stk';
+    var c=row.querySelector('select').value;
+    ings.push({n:n,q:q,u:u,c:c});
+  });
+  return {name:document.getElementById('rc-name').value.trim(),
+    emoji:document.getElementById('rc-emoji').value.trim()||'🍽️',
+    time_min:parseInt(document.getElementById('rc-time').value)||20,
+    serves:parseInt(document.getElementById('rc-serves').value)||4,
+    ingredients:ings};
+}
+async function saveRecipe(){
+  var data=collectRecipe();
+  if(!data.name){toast('⚠️','Name fehlt','Bitte einen Rezeptnamen eingeben.');return;}
+  try{
+    if(ES_EDIT_ID){await api('recipes?id=eq.'+ES_EDIT_ID,{method:'PATCH',body:JSON.stringify(data)});}
+    else{await api('recipes',{method:'POST',body:JSON.stringify(Object.assign({household_id:S.hh.id},data))});}
+    closeM('m-recipe');await loadEssen();ES.seg='plan';renderEssen();toast('✅','Gespeichert',data.name+' ist in eurer Bibliothek.');
+  }catch(e){toast('❌','Fehler','Bitte nochmal versuchen.');console.error(e);}
+}
+async function deleteRecipe(){
+  if(!ES_EDIT_ID)return;
+  try{await api('recipes?id=eq.'+ES_EDIT_ID,{method:'DELETE'});closeM('m-recipe');await loadEssen();renderEssen();toast('🗑️','Gelöscht','Rezept entfernt.');}
+  catch(e){toast('❌','Fehler','Bitte nochmal versuchen.');console.error(e);}
+}
+
+// ── Web-Import (Gratis-Proxy + schema.org JSON-LD) ──
+var ES_UNITS=['g','kg','mg','ml','l','el','tl','stk','stück','prise','prisen','bund','dose','dosen','packung','päckchen','pck','tasse','tassen','zehe','zehen','scheibe','scheiben','becher','glas','cm','liter','gramm','kilogramm','esslöffel','teelöffel','msp'];
+var ES_CATMAP=[
+ ['Obst & Gemüse',['tomate','zwiebel','knoblauch','paprika','karotte','möhre','salat','gurke','apfel','äpfel','banane','zitrone','limette','kartoffel','lauch','spinat','brokkoli','zucchini','aubergine','pilz','champignon','basilikum','petersilie','schnittlauch','kräuter','beere','erdbeer','himbeer','heidelbeer','avocado','mais','erbse','bohne','kürbis','sellerie','rucola','feldsalat','ingwer','chili','frühlingszwiebel','porree','rosmarin','thymian','minze','birne','orange','mango','ananas','radieschen','kohl']],
+ ['Fleisch & Fisch',['hähnchen','huhn','hühner','hackfleisch','hack ','rinder','rind','schwein','speck','schinken','wurst','würstchen','salami','lachs','fisch','thunfisch','garnele','pute','pancetta','chorizo','steak','filet','kotelett','frikadelle','bacon','kabeljau','forelle','ente','lamm','gulasch']],
+ ['Milchprodukte',['milch','butter','käse','sahne','joghurt','quark','eier','eigelb','eiweiß','mozzarella','parmesan','frischkäse','schmand','crème','creme fraiche','feta','gouda','mascarpone','ricotta','buttermilch','margarine']],
+ ['Backwaren',['brot','brötchen','baguette','teig','tortilla','semmel','toast','wrap','blätterteig','pizzateig','hefeteig','croissant','fladenbrot','knäckebrot']],
+ ['Tiefkühl',['tiefkühl','gefroren','tk-','tk ']],
+ ['Vorrat',['mehl','zucker','salz','pfeffer','öl','olivenöl','essig','reis','nudel','pasta','spaghetti','penne','brühe','gewürz','sauce','soße','honig','senf','ketchup','kokosmilch','currypaste','curry','backpulver','hefe','vanille','tomatenmark','passierte','konserve','linsen','kichererbsen','haferflocken','müsli','nüsse','mandel','schokolade','kakao','sojasauce','sojasoße','wein','kokos','paniermehl','stärke','speisestärke','brühwürfel','suppe']]
+];
+function categorize(name){
+  var n=' '+name.toLowerCase()+' ';
+  for(var i=0;i<ES_CATMAP.length;i++){var cat=ES_CATMAP[i][0],keys=ES_CATMAP[i][1];
+    for(var j=0;j<keys.length;j++){if(n.indexOf(keys[j])>=0)return cat;}}
+  return 'Sonstiges';
+}
+function parseIngredient(str){
+  var s=String(str).trim().replace(/\s+/g,' ').replace(/½/g,'0.5').replace(/¼/g,'0.25').replace(/¾/g,'0.75').replace(/⅓/g,'0.33').replace(/⅔/g,'0.66');
+  var m=s.match(/^(\d+(?:[.,]\d+)?)\s*([^\d\s]+)?\s*(.*)$/);
+  var q=1,u='Stk',name=s;
+  if(m){
+    q=parseFloat(m[1].replace(',','.'));
+    var maybe=(m[2]||'').replace(/\.$/,'');
+    if(maybe&&ES_UNITS.indexOf(maybe.toLowerCase())>=0){u=maybe;name=(m[3]||'').trim();}
+    else{u='';name=((m[2]||'')+' '+(m[3]||'')).trim();}
+  }
+  if(!name)name=s;
+  return {n:name,q:q,u:u,c:categorize(name)};
+}
+function openImportModal(){document.getElementById('im-url').value='';document.getElementById('im-result').innerHTML='';openM('m-import');}
+function findRecipeNode(data){
+  var nodes=[];
+  function push(x){if(x&&typeof x==='object')nodes.push(x);}
+  if(Array.isArray(data))data.forEach(push);
+  else if(data['@graph']&&Array.isArray(data['@graph']))data['@graph'].forEach(push);
+  else push(data);
+  for(var i=0;i<nodes.length;i++){var t=nodes[i]['@type'];
+    if(t&&(t==='Recipe'||(Array.isArray(t)&&t.indexOf('Recipe')>=0)))return nodes[i];}
+  return null;
+}
+async function doImport(){
+  var url=document.getElementById('im-url').value.trim();
+  var res=document.getElementById('im-result');
+  if(!url){res.innerHTML='<div class="im-ing">Bitte einen Link einfügen.</div>';return;}
+  res.innerHTML='<div class="im-ing">⏳ Lade Rezept…</div>';
+  var proxies=['https://api.allorigins.win/raw?url=','https://corsproxy.io/?url='];
+  var htmlText=null;
+  for(var p=0;p<proxies.length&&!htmlText;p++){
+    try{var r=await fetch(proxies[p]+encodeURIComponent(url));if(r.ok)htmlText=await r.text();}catch(e){}
+  }
+  if(!htmlText){res.innerHTML='<div class="im-ing">❌ Seite konnte nicht geladen werden. Versuch einen anderen Link.</div>';return;}
+  var doc=new DOMParser().parseFromString(htmlText,'text/html');
+  var scripts=doc.querySelectorAll('script[type="application/ld+json"]');
+  var recipe=null;
+  for(var i=0;i<scripts.length&&!recipe;i++){try{recipe=findRecipeNode(JSON.parse(scripts[i].textContent));}catch(e){}}
+  if(!recipe||!recipe.recipeIngredient){res.innerHTML='<div class="im-ing">❌ Auf dieser Seite wurde kein lesbares Rezept gefunden.<br>Klappt am besten mit Chefkoch & ähnlichen Rezeptseiten.</div>';return;}
+  var list=Array.isArray(recipe.recipeIngredient)?recipe.recipeIngredient:[recipe.recipeIngredient];
+  var ings=list.map(parseIngredient);
+  var name=(recipe.name||'Importiertes Rezept').toString();
+  var serves=parseInt((recipe.recipeYield||'4').toString().replace(/[^\d]/g,''))||4;
+  var prefill={name:name,emoji:'🍽️',time_min:30,serves:serves,ingredients:ings};
+  var prev=ings.map(function(i){return '<div class="im-ing">• '+(+i.q)+' '+esc(i.u)+' '+esc(i.n)+'  <span style="color:var(--t3)">('+i.c+')</span></div>';}).join('');
+  res.innerHTML='<div style="font-weight:600;margin:6px 0">'+esc(name)+'</div>'+prev
+    +'<button class="btn" id="im-take" style="margin-top:12px">✓ Übernehmen & bearbeiten</button>';
+  document.getElementById('im-take').onclick=function(){closeM('m-import');openRecipeEditor(null,prefill);};
+}
+
 // ═══ ENDE ESSEN-MODUL ═══
 
 init();
