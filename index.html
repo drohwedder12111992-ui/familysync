@@ -2613,7 +2613,7 @@ function renderPlan(){
 }
 
 function renderShop(){
-  if(!ES.groceries.length) return '<div class="empty" style="padding:34px 18px"><div style="font-size:34px;margin-bottom:10px">🛒</div>Noch keine Artikel.<br>Erzeuge die Liste aus eurem Wochenplan.<div style="margin:18px 13px 0"><button class="btn" id="btn-gen" style="margin:0">✨ Aus Wochenplan erzeugen</button></div></div>';
+  if(!ES.groceries.length) return '<div class="gadd"><input id="es-new" placeholder="Artikel hinzufügen…"><button id="btn-es-add">+</button></div><div class="empty" style="padding:24px 18px"><div style="font-size:34px;margin-bottom:10px">🛒</div>Noch keine Artikel.<br>Füge oben etwas hinzu – oder erzeuge die Liste aus eurem Wochenplan.<div style="margin:18px 13px 0"><button class="btn" id="btn-gen" style="margin:0">✨ Aus Wochenplan erzeugen</button></div></div>';
   var open=ES.groceries.filter(function(g){return !g.done;}).length;
   var done=ES.groceries.length-open;
   var fromPlan=ES.groceries.filter(function(g){return g.source==='auto';}).length;
@@ -2629,7 +2629,7 @@ function renderShop(){
       if(g.source==='auto'){who='<span class="who" style="background:var(--t3)">∑</span>';}
       else{var m=byId(g.added_by);who='<span class="who" style="background:'+(m?m.color:'var(--t3)')+'">'+(m?m.name[0]:'?')+'</span>';}
       h+='<div class="gitem '+(g.done?'done':'')+'" data-toggle="'+g.id+'"><div class="gcheck">'+(g.done?'✓':'')+'</div>'
-        +'<span class="gl">'+g.name+'</span><span class="gq">'+(+g.qty)+' '+g.unit+'</span>'+who+'</div>';
+        +'<span class="gl">'+esc(g.name)+'</span><span class="gq">'+(((g.unit&&g.unit.length)||(+g.qty)>1)?((+g.qty)+' '+(g.unit||'')).trim():'')+'</span>'+who+'</div>';
     });
   });
   return h+'<div style="height:20px"></div>';
@@ -2700,7 +2700,8 @@ async function toggleGrocery(id){
 async function addGrocery(){
   var inp=document.getElementById('es-new');if(!inp)return;var v=inp.value.trim();if(!v)return;
   try{
-    await api('grocery_items',{method:'POST',body:JSON.stringify({household_id:S.hh.id,name:v,qty:1,unit:'Stk',category:'Sonstiges',source:'manual',added_by:S.me.id})});
+    var pi=parseIngredient(v);if(!/\d/.test(v)){pi.q=1;pi.u='';}
+    await api('grocery_items',{method:'POST',body:JSON.stringify({household_id:S.hh.id,name:pi.n,qty:pi.q,unit:pi.u,category:pi.c,source:'manual',added_by:S.me.id})});
     await loadEssen();renderEssen();
     var ni=document.getElementById('es-new');if(ni)ni.focus();
     toast('✅','Hinzugefügt',v+' steht auf der Liste.');
