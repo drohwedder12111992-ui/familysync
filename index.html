@@ -352,6 +352,8 @@ body{background:var(--bg);color:var(--t1);font-family:var(--fb);height:100dvh;ov
 .ing-row select{background:var(--s3);border:1px solid var(--b2);border-radius:var(--rsm);color:var(--t1);font-family:var(--fb);font-size:11px;padding:8px 2px;width:62px;flex-shrink:0;}
 .ing-row .ing-x{color:var(--re);font-size:16px;cursor:pointer;padding:4px;flex-shrink:0;}
 .im-ing{font-size:13px;color:var(--t2);padding:4px 0;border-bottom:1px solid var(--b1);}
+.gdel{color:var(--t3);font-size:15px;padding:4px 6px;flex-shrink:0;cursor:pointer;}
+.gdel:active{color:var(--re);}
 </style>
 </head>
 <body>
@@ -2564,7 +2566,6 @@ async function loadEssen(){
   if(!S.hh)return;
   try{
     var r=await api('recipes?household_id=eq.'+S.hh.id+'&select=*&order=created_at');ES.recipes=await r.json();
-    if(!ES.recipes||!ES.recipes.length){await seedRecipes();}
     var wk=getWeek(0);
     var p=await api('meal_plan?household_id=eq.'+S.hh.id+'&date=gte.'+wk[0]+'&date=lte.'+wk[6]+'&select=*');
     var ps=await p.json();ES.plan={};ps.forEach(function(x){ES.plan[x.date+'_'+x.slot]=x;});
@@ -2603,6 +2604,7 @@ function renderPlan(){
   h+='<div class="sectitle" style="padding:16px 17px 0">Rezept-Bibliothek</div>';
   h+='<div style="margin:4px 13px 10px"><button class="btn" id="btn-gen" style="margin:0">🛒 Einkaufsliste erzeugen</button></div>';
   h+='<div class="recipe-actions"><button class="btn" id="btn-add-recipe">＋ Eigenes</button><button class="btn" id="btn-import-recipe">🌐 Aus Web</button></div>';
+  if(!ES.recipes.length){h+='<div class="empty" style="padding:18px 24px">Noch keine Rezepte hinterlegt.<br>Legt über „＋ Eigenes" oder „🌐 Aus Web" eure Lieblingsgerichte an.</div>';}
   h+='<div class="rgrid">';
   ES.recipes.forEach(function(r){
     h+='<div class="recipe"><div class="thumb" style="position:relative">'+(r.emoji||'🍽️')+'<span class="r-edit" data-edit="'+r.id+'">✎</span></div><div class="rb"><h4>'+r.name+'</h4>'
@@ -2629,9 +2631,10 @@ function renderShop(){
       if(g.source==='auto'){who='<span class="who" style="background:var(--t3)">∑</span>';}
       else{var m=byId(g.added_by);who='<span class="who" style="background:'+(m?m.color:'var(--t3)')+'">'+(m?m.name[0]:'?')+'</span>';}
       h+='<div class="gitem '+(g.done?'done':'')+'" data-toggle="'+g.id+'"><div class="gcheck">'+(g.done?'✓':'')+'</div>'
-        +'<span class="gl">'+esc(g.name)+'</span><span class="gq">'+(((g.unit&&g.unit.length)||(+g.qty)>1)?((+g.qty)+' '+(g.unit||'')).trim():'')+'</span>'+who+'</div>';
+        +'<span class="gl">'+esc(g.name)+'</span><span class="gq">'+(((g.unit&&g.unit.length)||(+g.qty)>1)?((+g.qty)+' '+(g.unit||'')).trim():'')+'</span>'+who+'<span class="gdel" data-del="'+g.id+'">✕</span>'+'</div>';
     });
   });
+  if(done){h+='<div style="margin:10px 13px 0"><button class="btn" id="btn-clear-done" style="margin:0">✓ Einkauf erledigt ('+done+' entfernen)</button></div>';}
   return h+'<div style="height:20px"></div>';
 }
 
@@ -2644,6 +2647,8 @@ function bindEssen(){
   var ir=document.getElementById('btn-import-recipe');if(ir)ir.onclick=openImportModal;
   document.querySelectorAll('#essen-view [data-edit]').forEach(function(b){b.onclick=function(e){e.stopPropagation();openRecipeEditor(b.dataset.edit);};});
   var g=document.getElementById('btn-gen');if(g)g.onclick=generateGroceries;
+  document.querySelectorAll('#essen-view [data-del]').forEach(function(b){b.onclick=function(e){e.stopPropagation();deleteGroceryItem(b.dataset.del);};});
+  var cd=document.getElementById('btn-clear-done');if(cd)cd.onclick=clearDoneGroceries;
   var a=document.getElementById('btn-es-add');if(a)a.onclick=addGrocery;
   var inp=document.getElementById('es-new');if(inp)inp.onkeydown=function(e){if(e.key==='Enter')addGrocery();};
 }
@@ -2847,6 +2852,15 @@ async function doImport(){
   document.getElementById('im-take').onclick=function(){closeM('m-import');openRecipeEditor(null,prefill);};
 }
 
+
+async function deleteGroceryItem(id){
+  try{await api('grocery_items?id=eq.'+id,{method:'DELETE'});ES.groceries=ES.groceries.filter(function(g){return g.id!==id;});updEssenCount();renderEssen();toast('🗑️','Gelöscht','Artikel entfernt.');}catch(e){toast('❌','Fehler','Bitte nochmal versuchen.');console.error(e);}
+}
+async function clearDoneGroceries(){
+  var done=ES.groceries.filter(function(g){return g.done;});
+  if(!done.length){toast('ℹ️','Nichts abgehakt','Hake erst erledigte Artikel ab.');return;}
+  try{await api('grocery_items?household_id=eq.'+S.hh.id+'&done=eq.true',{method:'DELETE'});await loadEssen();renderEssen();toast('🧹','Einkauf erledigt',done.length+' Artikel entfernt.');}catch(e){toast('❌','Fehler','Bitte nochmal versuchen.');console.error(e);}
+}
 // ═══ ENDE ESSEN-MODUL ═══
 
 init();
